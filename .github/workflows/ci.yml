@@ -1,0 +1,41 @@
+name: ci
+
+# Непрерывная проверка: сборка и тесты на каждом push в master и на PR.
+# Релизы собираются отдельно по тегу v* (см. release.yml).
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore SqlDataMover.slnx
+
+      - name: Build
+        run: dotnet build SqlDataMover.slnx -c Release --no-restore
+
+      - name: Test (unit + headless UI; интеграционные требуют локального SQL Server)
+        run: dotnet test SqlDataMover.slnx -c Release --no-build --filter "FullyQualifiedName!~SqlServerIntegrationTests"

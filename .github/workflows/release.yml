@@ -1,0 +1,109 @@
+name: release
+
+# Выпуск версии: тег вида v1, v1.2, v1.2.3 (опционально -prerelease, например v1.2.3-rc.1)
+# → сборка, тесты, publish win-x64 и GitHub Release с архивом и списком изменений.
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+
+permissions:
+  contents: write # создание GitHub Release
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # полная история нужна для генерации списка изменений
+
+      - name: Parse version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          if ($tag -notmatch '^v\d+(\.\d+){0,2}(-[0-9A-Za-z.-]+)?$') {
+            throw "Тег '$tag' не является версией: ожидается v<major>[.<minor>[.<patch>]][-prerelease]"
+          }
+          $core = $tag.Substring(1)
+          $suffix = ''
+          if ($core -match '^(.*?)-([0-9A-Za-z.-]+)$') {
+            $core = $Matches[1]
+            $suffix = $Matches[2]
+          }
+          $parts = $core.Split('.')
+          while ($parts.Count -lt 3) { $parts += '0' }
+          "prefix=$($parts -join '.')" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "suffix=$suffix" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore SqlDataMover.slnx
+
+      - name: Build
+        shell: pwsh
+        run: |
+          dotnet build SqlDataMover.slnx -c Release --no-restore `
+            -p:VersionPrefix=${{ steps.version.outputs.prefix }} `
+            -p:VersionSuffix=${{ steps.version.outputs.suffix }}
+
+      - name: Test (unit + headless UI; интеграционные требуют локального SQL Server)
+        run: dotnet test SqlDataMover.slnx -c Release --no-build --filter "FullyQualifiedName!~SqlServerIntegrationTests"
+
+      - name: Publish win-x64 (self-contained, single-file)
+        shell: pwsh
+        run: |
+          dotnet publish src/SqlDataMover.App/SqlDataMover.App.csproj -c Release `
+            -r win-x64 --self-contained true `
+            -p:VersionPrefix=${{ steps.version.outputs.prefix }} `
+            -p:VersionSuffix=${{ steps.version.outputs.suffix }} `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None -p:DebugSymbols=false `
+            -o publish/win-x64
+
+      - name: Pack archive and checksums
+        shell: pwsh
+        run: |
+          Remove-Item publish/win-x64/*.pdb -ErrorAction SilentlyContinue # нативные символы не нужны в релизе
+          Compress-Archive -Path publish/win-x64/* -DestinationPath "SqlDataMover-$env:GITHUB_REF_NAME-win-x64.zip" -Force
+          Get-FileHash "SqlDataMover-$env:GITHUB_REF_NAME-win-x64.zip" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } |
+            Out-File -FilePath SHA256SUMS.txt -Encoding ascii
+
+      - name: Generate changelog
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $prev = git describe --tags --abbrev=0 "$tag^" 2>$null
+          if ($LASTEXITCODE -ne 0) { $prev = $null }
+          if ($prev) { $range = "$prev..$tag" } else { $range = '' }
+          if ($range) {
+            $commits = git log --pretty=format:'* %h %s' $range
+          } else {
+            $commits = git log --pretty=format:'* %h %s'
+          }
+          $commits = $commits -join "`n"
+          $intro = if ($prev) { "Изменения между ${prev} и ${tag}:" } else { "Коммиты до ${tag}:" }
+          $body = "## Что изменилось`n`n$commits`n`n---`n$intro"
+          $body | Out-File -FilePath changelog.md -Encoding utf8
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: SqlDataMover ${{ github.ref_name }}
+          body_path: changelog.md
+          files: |
+            SqlDataMover-${{ github.ref_name }}-win-x64.zip
+            SHA256SUMS.txt
+          prerelease: ${{ contains(github.ref_name, '-') && 'true' || 'false' }}

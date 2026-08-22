@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <!--
+      Версия по умолчанию для локальных сборок (dev-сборки).
+      Релизная версия задаётся git-тегом vX.Y.Z[-prerelease] и переопределяется
+      в CI (см. .github/workflows/release.yml) через VersionPrefix/VersionSuffix:
+      тег является единственным источником истины для выпускаемых версий.
+      Здесь именно VersionPrefix, а не Version, иначе CLI-переопределение не сработает.
+    -->
+    <VersionPrefix>1.0.0</VersionPrefix>
+  </PropertyGroup>
+</Project>
