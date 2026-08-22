@@ -67,6 +67,24 @@ public class SqlServerIntegrationTests
         await VerifyEmployeesAsync(verify);
     }
 
+    [Fact]
+    public async Task GetTables_lists_tables_without_syntax_errors()
+    {
+        // Регрессия: алиас RowCount в запросе GetTablesAsync — зарезервированное слово
+        // T-SQL, без скобок запрос падает с "Incorrect syntax near keyword 'RowCount'".
+        await using var source = new SqlServerProvider(SourceConnectionString);
+        await source.ConnectAsync();
+
+        var tables = await source.GetTablesAsync();
+
+        var names = tables.Select(t => t.Name.ToString()).ToHashSet();
+        Assert.Contains("tests.Customers", names);
+        Assert.Contains("tests.Orders", names);
+        Assert.Contains("tests.OrderItems", names);
+        Assert.Contains("tests.Employees", names);
+        Assert.All(tables, t => Assert.True(t.RowCount >= 0));
+    }
+
     private static async Task ResetAndSeedAsync()
     {
         await using var source = new SqlConnection(SourceConnectionString);
@@ -159,10 +177,7 @@ public class SqlServerIntegrationTests
         // Совпавший по (Region, Code) клиент обновлён: Id 5 сохранён, Name = 'New'.
         Assert.Equal(
             "New",
-            await ScalarAsync<string>(
-                connection,
-                "SELECT Name FROM tests.Customers WHERE Id = 5"
-            )
+            await ScalarAsync<string>(connection, "SELECT Name FROM tests.Customers WHERE Id = 5")
         );
 
         // Второй клиент вставлен с новым identity.

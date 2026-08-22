@@ -39,6 +39,7 @@
                                   SelectedItem="{Binding SourceSelectedEntry}"
                                   Text="{Binding SourceConnectionString}"
                                   IsEditable="True"
+                                  HorizontalAlignment="Stretch"
                                   PlaceholderText="Server=localhost;Database=SourceDb;Trusted_Connection=True;Encrypt=False"
                                   FontFamily="Consolas,Menlo,monospace" FontSize="13">
                             <ComboBox.ItemTemplate>
@@ -56,6 +57,7 @@
                                   SelectedItem="{Binding TargetSelectedEntry}"
                                   Text="{Binding TargetConnectionString}"
                                   IsEditable="True"
+                                  HorizontalAlignment="Stretch"
                                   PlaceholderText="Server=localhost;Database=TargetDb;Trusted_Connection=True;Encrypt=False"
                                   FontFamily="Consolas,Menlo,monospace" FontSize="13">
                             <ComboBox.ItemTemplate>

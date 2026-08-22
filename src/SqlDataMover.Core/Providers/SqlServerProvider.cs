@@ -43,7 +43,7 @@ public sealed class SqlServerProvider : IDbProvider
     public async Task<IReadOnlyList<DbTable>> GetTablesAsync(CancellationToken ct = default)
     {
         const string sql = """
-            SELECT s.name AS SchemaName, t.name AS TableName, SUM(p.rows) AS RowCount
+            SELECT s.name AS SchemaName, t.name AS TableName, SUM(p.rows) AS [RowCount]
             FROM sys.tables t
             JOIN sys.schemas s ON t.schema_id = s.schema_id
             JOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0, 1)
