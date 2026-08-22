@@ -28,7 +28,9 @@ src/SqlDataMover.Core/          # библиотека, независимая �
 src/SqlDataMover.App/           # Avalonia UI (net10.0), MVVM (CommunityToolkit.Mvvm)
   ViewModels/                   # Connection/Tables/Mapping/Preview + MainViewModel (навигация)
   Views/                        # MainWindow + 4 страницы мастера
-tests/SqlDataMover.Core.Tests/  # xunit; FakeProvider — in-memory провайдер для тестов движка
+tests/SqlDataMover.Core.Tests/  # xunit; тесты движка и моделей (FakeProvider — в TestHelpers)
+tests/SqlDataMover.TestHelpers/ # общий in-memory провайдер (FakeProvider/FakeTable/TestTables) для тестов
+tests/SqlDataMover.App.Tests/   # GUI-тесты: ViewModel-сценарии + headless UI (Avalonia.Headless.XUnit)
 tests/sql/setup-test-databases.sql  # подготовка БД (sql-data-mover-src/dest, схема tests) для интеграционных тестов
 ```
 
@@ -113,3 +115,20 @@ tests/sql/setup-test-databases.sql  # подготовка БД (sql-data-mover-
   захардкожены, `localhost`): сначала выполнить tests/sql/setup-test-databases.sql. Проверяет
   реальный SqlServerProvider: составное сопоставление, переназначение identity, FK-цепочку
   Customers → Orders → OrderItems и самоссылающуюся Employees.
+
+`tests/SqlDataMover.App.Tests` (GUI, xunit v3):
+
+- MainViewModelTests — полный сценарий мастера на ViewModel: блокировка «Далее/Назад»,
+  подключение через fake-провайдер, выбор таблиц, сопоставление по умолчанию (PK),
+  предпросмотр (dry run) со счётчиками вставки/обновления, ошибка подключения.
+  Провайдер регистрируется через `DbProviderFactory.Register` (ключ уникален на тест).
+- MainWindowTests — headless UI (Avalonia.Headless.XUnit, `UseSkia` + `UseHeadlessDrawing=false`):
+  реальное окно, клики по кнопкам, ввод в поля подключения, биндинги, навигация по всем
+  шагам, вывод ошибки подключения, рендер кадра (`CaptureRenderedFrame`).
+- Особенности headless-тестов: контролы страниц ищутся по визуальному дереву (у страниц свой
+  namescope); перед кликом прогоняются отложенные задачи layout, иначе координаты устаревают;
+  настройки (`AppSettingsStore.FilePath`) перенаправляются во временный файл, чтобы не трогать
+  реальный `%APPDATA%`.
+
+Тестируемость в самом коде: `DbProviderFactory.Register` (тестовые СУБД), переопределяемый
+путь `AppSettingsStore.FilePath`, `x:Name` на ключевых контролах окна и страниц.

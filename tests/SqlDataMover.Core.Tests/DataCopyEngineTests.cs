@@ -1,5 +1,6 @@
 using SqlDataMover.Core.Copy;
 using SqlDataMover.Core.Models;
+using SqlDataMover.TestHelpers;
 
 namespace SqlDataMover.Core.Tests;
 

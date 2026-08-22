@@ -68,18 +68,18 @@
             </Grid>
         </Border>
 
-        <!-- Контент шага -->
-        <ContentControl Content="{Binding CurrentPage}" Margin="28,20"/>
-
-        <!-- Подвал -->
+        <!-- Подвал: докируется вниз до контента. -->
         <Border DockPanel.Dock="Bottom" Padding="24,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource CardBorder}">
             <Grid ColumnDefinitions="Auto,*,Auto">
-                <Button Content="Заново" Command="{Binding RestartCommand}" Padding="18,7"/>
+                <Button x:Name="RestartButton" Content="Заново" Command="{Binding RestartCommand}" Padding="18,7"/>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
-                    <Button Content="← Назад" Command="{Binding GoBackCommand}" Padding="20,7" IsEnabled="{Binding CanGoBack}"/>
-                    <Button Content="Далее →" Command="{Binding GoNextCommand}" Classes="primary" Padding="24,7" IsEnabled="{Binding CanGoNext}"/>
+                    <Button x:Name="BackButton" Content="← Назад" Command="{Binding GoBackCommand}" Padding="20,7" IsEnabled="{Binding CanGoBack}"/>
+                    <Button x:Name="NextButton" Content="Далее →" Command="{Binding GoNextCommand}" Classes="primary" Padding="24,7" IsEnabled="{Binding CanGoNext}"/>
                 </StackPanel>
             </Grid>
         </Border>
+
+        <!-- Контент шага: последний ребёнок DockPanel заполняет оставшееся место. -->
+        <ContentControl Content="{Binding CurrentPage}" Margin="28,20"/>
     </DockPanel>
 </Window>

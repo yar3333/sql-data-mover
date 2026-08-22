@@ -67,7 +67,7 @@
 
                     <TextBlock Text="Статистика появится после предварительного прогона."
                                IsVisible="{Binding !HasPreview}" Foreground="{DynamicResource TextMutedBrush}"/>
-                    <TextBlock Text="{Binding PreviewSummary}" FontWeight="SemiBold" TextWrapping="Wrap"
+                    <TextBlock x:Name="PreviewSummaryText" Text="{Binding PreviewSummary}" FontWeight="SemiBold" TextWrapping="Wrap"
                                IsVisible="{Binding HasPreview}"/>
                 </StackPanel>
             </StackPanel>

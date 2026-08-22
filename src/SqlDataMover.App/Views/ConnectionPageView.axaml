@@ -20,7 +20,7 @@
             <Border Classes="card">
                 <StackPanel Spacing="10">
                     <TextBlock Text="Тип СУБД" FontWeight="SemiBold"/>
-                    <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding SelectedProvider}"
+                    <ComboBox x:Name="ProviderBox" ItemsSource="{Binding Providers}" SelectedItem="{Binding SelectedProvider}"
                               Width="280" HorizontalAlignment="Left">
                         <ComboBox.ItemTemplate>
                             <DataTemplate DataType="core:ProviderDescriptor">
@@ -35,7 +35,7 @@
                 <StackPanel Spacing="14">
                     <StackPanel Spacing="6">
                         <TextBlock Text="Источник (source)" FontWeight="SemiBold"/>
-                        <ComboBox ItemsSource="{Binding SourceHistory}"
+                        <ComboBox x:Name="SourceConnectionBox" ItemsSource="{Binding SourceHistory}"
                                   SelectedItem="{Binding SourceSelectedEntry}"
                                   Text="{Binding SourceConnectionString}"
                                   IsEditable="True"
@@ -52,7 +52,7 @@
 
                     <StackPanel Spacing="6">
                         <TextBlock Text="Приёмник (target)" FontWeight="SemiBold"/>
-                        <ComboBox ItemsSource="{Binding TargetHistory}"
+                        <ComboBox x:Name="TargetConnectionBox" ItemsSource="{Binding TargetHistory}"
                                   SelectedItem="{Binding TargetSelectedEntry}"
                                   Text="{Binding TargetConnectionString}"
                                   IsEditable="True"
@@ -68,7 +68,7 @@
                     </StackPanel>
 
                     <Grid ColumnDefinitions="Auto,*">
-                        <Button Content="Подключиться" Command="{Binding ConnectCommand}" Classes="primary"
+                        <Button x:Name="ConnectButton" Content="Подключиться" Command="{Binding ConnectCommand}" Classes="primary"
                                 IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Left"/>
                         <ProgressBar Grid.Column="1" IsIndeterminate="{Binding IsBusy}" IsVisible="{Binding IsBusy}"
                                      Height="6" Margin="16,0,0,0" VerticalAlignment="Center"/>

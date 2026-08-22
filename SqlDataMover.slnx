@@ -4,6 +4,8 @@
     <Project Path="src/SqlDataMover.Core/SqlDataMover.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/SqlDataMover.App.Tests/SqlDataMover.App.Tests.csproj" />
     <Project Path="tests/SqlDataMover.Core.Tests/SqlDataMover.Core.Tests.csproj" />
+    <Project Path="tests/SqlDataMover.TestHelpers/SqlDataMover.TestHelpers.csproj" />
   </Folder>
 </Solution>

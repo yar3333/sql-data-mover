@@ -53,7 +53,7 @@ public partial class MainViewModel : ViewModelBase
                 is nameof(ConnectionPageViewModel.IsReady)
                     or nameof(ConnectionPageViewModel.IsBusy)
             )
-                GoNextCommand.NotifyCanExecuteChanged();
+                NotifyNavigationState();
         };
         Connection.TablesLoaded += tables => Tables.LoadTables(tables);
         Tables.PropertyChanged += (_, e) =>
@@ -63,7 +63,7 @@ public partial class MainViewModel : ViewModelBase
                 is nameof(TablesPageViewModel.SelectedCount)
                     or nameof(TablesPageViewModel.IsBusy)
             )
-                GoNextCommand.NotifyCanExecuteChanged();
+                NotifyNavigationState();
         };
         Mapping.PropertyChanged += (_, e) =>
         {
@@ -72,12 +72,12 @@ public partial class MainViewModel : ViewModelBase
                 is nameof(MappingPageViewModel.IsBusy)
                     or nameof(MappingPageViewModel.AllHaveMatchColumns)
             )
-                GoNextCommand.NotifyCanExecuteChanged();
+                NotifyNavigationState();
         };
         Preview.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(PreviewPageViewModel.IsBusy))
-                GoNextCommand.NotifyCanExecuteChanged();
+                NotifyNavigationState();
         };
     }
 
@@ -88,6 +88,18 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsStep1Active));
         OnPropertyChanged(nameof(IsStep2Active));
         OnPropertyChanged(nameof(IsStep3Active));
+        NotifyNavigationState();
+    }
+
+    /// <summary>
+    /// Уведомляет о состоянии навигации: кнопки «Далее/Назад» привязаны к
+    /// <see cref="CanGoNext"/> и <see cref="CanGoBack"/>, поэтому вместе с
+    /// CanExecuteChanged нужно поднимать и PropertyChanged самих свойств.
+    /// </summary>
+    private void NotifyNavigationState()
+    {
+        OnPropertyChanged(nameof(CanGoNext));
+        OnPropertyChanged(nameof(CanGoBack));
         GoNextCommand.NotifyCanExecuteChanged();
         GoBackCommand.NotifyCanExecuteChanged();
     }

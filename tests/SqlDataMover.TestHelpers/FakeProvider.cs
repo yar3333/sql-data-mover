@@ -3,25 +3,37 @@ using SqlDataMover.Core;
 using SqlDataMover.Core.Abstractions;
 using SqlDataMover.Core.Models;
 
-namespace SqlDataMover.Core.Tests;
+namespace SqlDataMover.TestHelpers;
 
-/// <summary>In-memory провайдер для тестирования движка без реальной СУБД.</summary>
-internal sealed class FakeProvider : IDbProvider
+/// <summary>In-memory провайдер для тестирования движка и GUI без реальной СУБД.</summary>
+public sealed class FakeProvider : IDbProvider
 {
     private readonly Dictionary<DbObjectName, FakeTable> _tables = [];
+    private readonly bool _failOnConnect;
 
     public string Name => "Fake";
     public bool IsConnected => true;
 
     public FakeProvider(params FakeTable[] tables)
+        : this(false, tables) { }
+
+    /// <summary>
+    /// При <paramref name="failOnConnect"/> == true <see cref="ConnectAsync"/> бросает
+    /// исключение — имитация недоступного сервера для тестов обработки ошибок.
+    /// </summary>
+    public FakeProvider(bool failOnConnect, params FakeTable[] tables)
     {
+        _failOnConnect = failOnConnect;
         foreach (var t in tables)
             _tables[t.Meta.Name] = t;
     }
 
     public FakeTable GetTable(DbObjectName name) => _tables[name];
 
-    public Task ConnectAsync(CancellationToken ct = default) => Task.CompletedTask;
+    public Task ConnectAsync(CancellationToken ct = default) =>
+        _failOnConnect
+            ? throw new InvalidOperationException("Сервер недоступен (имитация)")
+            : Task.CompletedTask;
 
     public Task<IReadOnlyList<DbTable>> GetTablesAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<DbTable>>(_tables.Values.Select(t => t.Meta).ToList());
@@ -185,7 +197,7 @@ internal sealed class FakeProvider : IDbProvider
     }
 }
 
-internal sealed class FakeTransaction : IDbWriteTransaction
+public sealed class FakeTransaction : IDbWriteTransaction
 {
     public Task CommitAsync(CancellationToken ct = default) => Task.CompletedTask;
 
@@ -193,7 +205,7 @@ internal sealed class FakeTransaction : IDbWriteTransaction
 }
 
 /// <summary>Таблица в памяти. Строки — массивы значений, выровненные по колонкам Meta.Columns.</summary>
-internal sealed class FakeTable
+public sealed class FakeTable
 {
     public required DbTable Meta { get; init; }
     public List<object?[]> Rows { get; } = [];
@@ -229,7 +241,7 @@ internal sealed class FakeTable
 }
 
 /// <summary>Хелперы построения метаданных для тестов.</summary>
-internal static class TestTables
+public static class TestTables
 {
     public static DbColumn Col(string name, bool identity = false, bool pk = false) =>
         new()

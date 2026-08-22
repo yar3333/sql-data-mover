@@ -5,10 +5,13 @@ namespace SqlDataMover.App.Models;
 /// <summary>Загрузка и сохранение настроек в %APPDATA%\SqlDataMover\settings.json.</summary>
 public static class AppSettingsStore
 {
-    private static readonly string FilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "SqlDataMover",
-        "settings.json");
+    /// <summary>Путь к файлу настроек. Тесты переопределяют, чтобы не трогать реальные настройки пользователя.</summary>
+    public static string FilePath { get; set; } =
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "SqlDataMover",
+            "settings.json"
+        );
 
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
@@ -18,7 +21,8 @@ public static class AppSettingsStore
         {
             if (!File.Exists(FilePath))
                 return new AppSettings();
-            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath), Options) ?? new AppSettings();
+            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath), Options)
+                ?? new AppSettings();
         }
         catch
         {
