@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:SqlDataMover.App.ViewModels"
              xmlns:core="using:SqlDataMover.Core.Abstractions"
+             xmlns:models="using:SqlDataMover.App.Models"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
@@ -34,19 +35,35 @@
                 <StackPanel Spacing="14">
                     <StackPanel Spacing="6">
                         <TextBlock Text="Источник (source)" FontWeight="SemiBold"/>
-                        <TextBox Text="{Binding SourceConnectionString}"
-                                 PlaceholderText="Server=localhost;Database=SourceDb;Trusted_Connection=True;Encrypt=False"
-                                 MinHeight="54" TextWrapping="Wrap" AcceptsReturn="True"
-                                 FontFamily="Consolas,Menlo,monospace" FontSize="13"/>
+                        <ComboBox ItemsSource="{Binding SourceHistory}"
+                                  SelectedItem="{Binding SourceSelectedEntry}"
+                                  Text="{Binding SourceConnectionString}"
+                                  IsEditable="True"
+                                  PlaceholderText="Server=localhost;Database=SourceDb;Trusted_Connection=True;Encrypt=False"
+                                  FontFamily="Consolas,Menlo,monospace" FontSize="13">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate DataType="models:ConnectionHistoryEntry">
+                                    <TextBlock Text="{Binding DisplayName}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                         <TextBlock Text="{Binding SourceStatus}" Foreground="{DynamicResource SuccessBrush}" FontSize="12"/>
                     </StackPanel>
 
                     <StackPanel Spacing="6">
                         <TextBlock Text="Приёмник (target)" FontWeight="SemiBold"/>
-                        <TextBox Text="{Binding TargetConnectionString}"
-                                 PlaceholderText="Server=localhost;Database=TargetDb;Trusted_Connection=True;Encrypt=False"
-                                 MinHeight="54" TextWrapping="Wrap" AcceptsReturn="True"
-                                 FontFamily="Consolas,Menlo,monospace" FontSize="13"/>
+                        <ComboBox ItemsSource="{Binding TargetHistory}"
+                                  SelectedItem="{Binding TargetSelectedEntry}"
+                                  Text="{Binding TargetConnectionString}"
+                                  IsEditable="True"
+                                  PlaceholderText="Server=localhost;Database=TargetDb;Trusted_Connection=True;Encrypt=False"
+                                  FontFamily="Consolas,Menlo,monospace" FontSize="13">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate DataType="models:ConnectionHistoryEntry">
+                                    <TextBlock Text="{Binding DisplayName}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                         <TextBlock Text="{Binding TargetStatus}" Foreground="{DynamicResource SuccessBrush}" FontSize="12"/>
                     </StackPanel>
 
