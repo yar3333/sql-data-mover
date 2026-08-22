@@ -25,7 +25,9 @@ public sealed class SqlServerProvider : IDbProvider
         // Для локальных серверов без настроенного TLS не отключаемся с ошибкой: пробуем шифрование, если возможно.
         if (!connectionString.Contains("Encrypt", StringComparison.OrdinalIgnoreCase))
             builder.Encrypt = SqlConnectionEncryptOption.Optional;
-        if (!connectionString.Contains("TrustServerCertificate", StringComparison.OrdinalIgnoreCase))
+        if (
+            !connectionString.Contains("TrustServerCertificate", StringComparison.OrdinalIgnoreCase)
+        )
             builder.TrustServerCertificate = true;
 
         _connectionString = builder.ConnectionString;
@@ -54,17 +56,22 @@ public sealed class SqlServerProvider : IDbProvider
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
-            tables.Add(new DbTable
-            {
-                Name = new DbObjectName(reader.GetString(0), reader.GetString(1)),
-                RowCount = reader.IsDBNull(2) ? 0 : reader.GetInt64(2)
-            });
+            tables.Add(
+                new DbTable
+                {
+                    Name = new DbObjectName(reader.GetString(0), reader.GetString(1)),
+                    RowCount = reader.IsDBNull(2) ? 0 : reader.GetInt64(2),
+                }
+            );
         }
 
         return tables;
     }
 
-    public async Task<DbTable> GetTableDetailsAsync(DbObjectName table, CancellationToken ct = default)
+    public async Task<DbTable> GetTableDetailsAsync(
+        DbObjectName table,
+        CancellationToken ct = default
+    )
     {
         const string columnsSql = """
             SELECT c.column_id, c.name AS ColumnName, ty.name AS DataType,
@@ -102,11 +109,13 @@ public sealed class SqlServerProvider : IDbProvider
                     IsNullable = reader.GetBoolean(3),
                     IsIdentity = reader.GetBoolean(4),
                     IsComputed = reader.GetBoolean(5),
-                    IsPrimaryKey = reader.GetInt32(6) == 1
+                    IsPrimaryKey = reader.GetInt32(6) == 1,
                 };
 
-                if (column.IsIdentity) identity = column.Name;
-                if (column.IsPrimaryKey) primaryKey.Add(column.Name);
+                if (column.IsIdentity)
+                    identity = column.Name;
+                if (column.IsPrimaryKey)
+                    primaryKey.Add(column.Name);
                 columns.Add(column);
             }
         }
@@ -122,11 +131,14 @@ public sealed class SqlServerProvider : IDbProvider
             Columns = columns,
             PrimaryKeyColumns = primaryKey,
             IdentityColumn = identity,
-            ForeignKeys = foreignKeys
+            ForeignKeys = foreignKeys,
         };
     }
 
-    private async Task<IReadOnlyList<DbForeignKey>> LoadForeignKeysAsync(DbObjectName table, CancellationToken ct)
+    private async Task<IReadOnlyList<DbForeignKey>> LoadForeignKeysAsync(
+        DbObjectName table,
+        CancellationToken ct
+    )
     {
         const string sql = """
             SELECT fk.name AS FKName,
@@ -142,7 +154,14 @@ public sealed class SqlServerProvider : IDbProvider
             ORDER BY fk.name, fkc.constraint_column_id
             """;
 
-        var raw = new List<(string FkName, string ParentSchema, string ParentTable, string ChildColumn, string ParentColumn)>();
+        var raw =
+            new List<(
+                string FkName,
+                string ParentSchema,
+                string ParentTable,
+                string ChildColumn,
+                string ParentColumn
+            )>();
 
         await using (var cmd = new SqlCommand(sql, _connection))
         {
@@ -150,25 +169,35 @@ public sealed class SqlServerProvider : IDbProvider
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
-                raw.Add((
-                    reader.GetString(0),
-                    reader.GetString(1),
-                    reader.GetString(2),
-                    reader.GetString(3),
-                    reader.GetString(4)));
+                raw.Add(
+                    (
+                        reader.GetString(0),
+                        reader.GetString(1),
+                        reader.GetString(2),
+                        reader.GetString(3),
+                        reader.GetString(4)
+                    )
+                );
             }
         }
 
         var result = new List<DbForeignKey>();
         foreach (var group in raw.GroupBy(r => r.FkName))
         {
-            result.Add(new DbForeignKey
-            {
-                Name = group.Key,
-                ReferencingTable = table,
-                ReferencedTable = new DbObjectName(group.First().ParentSchema, group.First().ParentTable),
-                ColumnPairs = group.Select(r => new ForeignKeyColumnPair(r.ChildColumn, r.ParentColumn)).ToList()
-            });
+            result.Add(
+                new DbForeignKey
+                {
+                    Name = group.Key,
+                    ReferencingTable = table,
+                    ReferencedTable = new DbObjectName(
+                        group.First().ParentSchema,
+                        group.First().ParentTable
+                    ),
+                    ColumnPairs = group
+                        .Select(r => new ForeignKeyColumnPair(r.ChildColumn, r.ParentColumn))
+                        .ToList(),
+                }
+            );
         }
 
         return result;
@@ -177,7 +206,8 @@ public sealed class SqlServerProvider : IDbProvider
     public async IAsyncEnumerable<object?[]> ReadRowsAsync(
         DbObjectName table,
         IReadOnlyList<string> columns,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken ct = default
+    )
     {
         var sql = $"SELECT {string.Join(", ", columns.Select(Quote))} FROM {QuoteTable(table)}";
         await using var cmd = new SqlCommand(sql, _connection);
@@ -196,21 +226,38 @@ public sealed class SqlServerProvider : IDbProvider
 
     public async Task<Dictionary<object, object>> LoadMatchMapAsync(
         DbObjectName table,
-        string uniqueColumn,
+        IReadOnlyList<string> matchColumns,
         string mappedColumn,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
-        var map = new Dictionary<object, object>(ObjectKeyComparer.Instance);
-        var sql = $"SELECT {Quote(uniqueColumn)}, {Quote(mappedColumn)} FROM {QuoteTable(table)} WHERE {Quote(uniqueColumn)} IS NOT NULL";
+        var map = new Dictionary<object, object>();
+        var where = string.Join(" AND ", matchColumns.Select(c => $"{Quote(c)} IS NOT NULL"));
+        var select = string.Join(", ", matchColumns.Select(Quote).Append(Quote(mappedColumn)));
+        var sql = $"SELECT {select} FROM {QuoteTable(table)} WHERE {where}";
 
         await using var cmd = new SqlCommand(sql, _connection);
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
-            var key = reader.GetValue(0);
-            if (key is DBNull) continue;
-            var value = reader.GetValue(1);
-            map[key] = value is DBNull ? null! : value;
+            var keyValues = new object?[matchColumns.Count];
+            var isNull = false;
+            for (var i = 0; i < matchColumns.Count; i++)
+            {
+                var value = reader.GetValue(i);
+                if (value is DBNull)
+                {
+                    isNull = true;
+                    break;
+                }
+                keyValues[i] = value;
+            }
+
+            if (isNull)
+                continue;
+
+            var mapped = reader.GetValue(matchColumns.Count);
+            map[new CompositeKey(keyValues)] = mapped is DBNull ? null! : mapped;
         }
 
         return map;
@@ -227,7 +274,8 @@ public sealed class SqlServerProvider : IDbProvider
         IReadOnlyList<string> columns,
         IReadOnlyList<object?[]> rows,
         IDbWriteTransaction? transaction = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
         if (rows.Count == 0)
             return [];
@@ -241,16 +289,22 @@ public sealed class SqlServerProvider : IDbProvider
             sql.Append(" OUTPUT INSERTED.").Append(Quote(table.IdentityColumn!));
         sql.Append(" VALUES ");
 
-        await using var cmd = new SqlCommand { Connection = _connection, Transaction = GetSqlTransaction(transaction) };
+        await using var cmd = new SqlCommand
+        {
+            Connection = _connection,
+            Transaction = GetSqlTransaction(transaction),
+        };
 
         var parameterIndex = 0;
         for (var r = 0; r < rows.Count; r++)
         {
-            if (r > 0) sql.Append(", ");
+            if (r > 0)
+                sql.Append(", ");
             sql.Append('(');
             for (var c = 0; c < columns.Count; c++)
             {
-                if (c > 0) sql.Append(", ");
+                if (c > 0)
+                    sql.Append(", ");
                 var name = $"@p{parameterIndex}";
                 sql.Append(name);
                 cmd.Parameters.AddWithValue(name, rows[r][c] ?? DBNull.Value);
@@ -280,26 +334,33 @@ public sealed class SqlServerProvider : IDbProvider
 
     public async Task<int> UpdateRowsAsync(
         DbTable table,
-        string uniqueColumn,
+        IReadOnlyList<string> matchColumns,
         IReadOnlyList<string> allColumns,
         IReadOnlyList<string> updateColumns,
         IReadOnlyList<object?[]> rows,
         IDbWriteTransaction? transaction = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
         if (rows.Count == 0 || updateColumns.Count == 0)
             return 0;
 
-        var uniqueIndex = IndexOf(allColumns, uniqueColumn);
-        if (uniqueIndex < 0)
-            throw new InvalidOperationException($"Колонка «{uniqueColumn}» не найдена среди копируемых колонок.");
+        var matchIndices = matchColumns.Select(c => IndexOf(allColumns, c)).ToArray();
+        if (matchIndices.Any(i => i < 0))
+            throw new InvalidOperationException(
+                "Одно из полей сопоставления не найдено среди копируемых колонок."
+            );
 
         var updateIndices = updateColumns.Select(c => IndexOf(allColumns, c)).ToArray();
         if (updateIndices.Any(i => i < 0))
             throw new InvalidOperationException("Одна из колонок обновления не найдена.");
 
         var sql = new StringBuilder();
-        await using var cmd = new SqlCommand { Connection = _connection, Transaction = GetSqlTransaction(transaction) };
+        await using var cmd = new SqlCommand
+        {
+            Connection = _connection,
+            Transaction = GetSqlTransaction(transaction),
+        };
 
         var parameterIndex = 0;
         for (var r = 0; r < rows.Count; r++)
@@ -307,17 +368,25 @@ public sealed class SqlServerProvider : IDbProvider
             sql.Append("UPDATE ").Append(QuoteTable(table.Name)).Append(" SET ");
             for (var c = 0; c < updateColumns.Count; c++)
             {
-                if (c > 0) sql.Append(", ");
+                if (c > 0)
+                    sql.Append(", ");
                 var name = $"@p{parameterIndex}";
                 sql.Append(Quote(updateColumns[c])).Append(" = ").Append(name);
                 cmd.Parameters.AddWithValue(name, rows[r][updateIndices[c]] ?? DBNull.Value);
                 parameterIndex++;
             }
-            var whereName = $"@p{parameterIndex}";
-            sql.Append(" WHERE ").Append(Quote(uniqueColumn)).Append(" = ").Append(whereName);
-            cmd.Parameters.AddWithValue(whereName, rows[r][uniqueIndex] ?? DBNull.Value);
-            parameterIndex++;
-            if (r < rows.Count - 1) sql.Append("; ");
+            sql.Append(" WHERE ");
+            for (var i = 0; i < matchColumns.Count; i++)
+            {
+                if (i > 0)
+                    sql.Append(" AND ");
+                var name = $"@p{parameterIndex}";
+                sql.Append(Quote(matchColumns[i])).Append(" = ").Append(name);
+                cmd.Parameters.AddWithValue(name, rows[r][matchIndices[i]] ?? DBNull.Value);
+                parameterIndex++;
+            }
+            if (r < rows.Count - 1)
+                sql.Append("; ");
         }
 
         cmd.CommandText = sql.ToString();
@@ -330,20 +399,29 @@ public sealed class SqlServerProvider : IDbProvider
         string whereColumn,
         IReadOnlyList<(object? SetValue, object? WhereValue)> pairs,
         IDbWriteTransaction? transaction = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
         if (pairs.Count == 0)
             return 0;
 
         var sql = new StringBuilder();
-        await using var cmd = new SqlCommand { Connection = _connection, Transaction = GetSqlTransaction(transaction) };
+        await using var cmd = new SqlCommand
+        {
+            Connection = _connection,
+            Transaction = GetSqlTransaction(transaction),
+        };
 
         var parameterIndex = 0;
         for (var i = 0; i < pairs.Count; i++)
         {
             var setValueName = $"@p{parameterIndex}";
-            sql.Append("UPDATE ").Append(QuoteTable(table.Name))
-               .Append(" SET ").Append(Quote(setColumn)).Append(" = ").Append(setValueName);
+            sql.Append("UPDATE ")
+                .Append(QuoteTable(table.Name))
+                .Append(" SET ")
+                .Append(Quote(setColumn))
+                .Append(" = ")
+                .Append(setValueName);
             cmd.Parameters.AddWithValue(setValueName, pairs[i].SetValue ?? DBNull.Value);
             parameterIndex++;
 
@@ -351,7 +429,8 @@ public sealed class SqlServerProvider : IDbProvider
             sql.Append(" WHERE ").Append(Quote(whereColumn)).Append(" = ").Append(whereValueName);
             cmd.Parameters.AddWithValue(whereValueName, pairs[i].WhereValue ?? DBNull.Value);
             parameterIndex++;
-            if (i < pairs.Count - 1) sql.Append("; ");
+            if (i < pairs.Count - 1)
+                sql.Append("; ");
         }
 
         cmd.CommandText = sql.ToString();
@@ -384,7 +463,8 @@ public sealed class SqlServerProvider : IDbProvider
     {
         private SqlTransaction? _tx;
 
-        public SqlTransaction Transaction => _tx ?? throw new ObjectDisposedException(nameof(SqlWriteTransaction));
+        public SqlTransaction Transaction =>
+            _tx ?? throw new ObjectDisposedException(nameof(SqlWriteTransaction));
 
         public SqlWriteTransaction(SqlTransaction tx) => _tx = tx;
 
@@ -400,7 +480,13 @@ public sealed class SqlServerProvider : IDbProvider
             if (_tx is { } tx)
             {
                 _tx = null;
-                try { tx.Rollback(); } catch (SqlException) { /* уже закоммичено или соединение закрыто */ }
+                try
+                {
+                    tx.Rollback();
+                }
+                catch (SqlException)
+                { /* уже закоммичено или соединение закрыто */
+                }
             }
             return ValueTask.CompletedTask;
         }

@@ -151,8 +151,14 @@ public sealed class DataCopyEngine
         CancellationToken ct
     )
     {
-        EnsureColumnExists(src, cfg.UniqueColumn);
-        EnsureColumnExists(tgt, cfg.UniqueColumn);
+        if (cfg.MatchColumns.Count == 0)
+            throw new InvalidOperationException("Не указаны поля сопоставления для таблицы.");
+
+        foreach (var column in cfg.MatchColumns)
+        {
+            EnsureColumnExists(src, column);
+            EnsureColumnExists(tgt, column);
+        }
 
         // Колонки, которые копируем: общие для источника и приёмника, без вычисляемых и identity приёмника.
         var insertColumns = src
@@ -184,20 +190,21 @@ public sealed class DataCopyEngine
             }
         }
 
-        var uniqueIndex = IndexOf(readColumns, cfg.UniqueColumn);
-        if (uniqueIndex < 0)
+        var matchIndices = cfg.MatchColumns.Select(c => IndexOf(readColumns, c)).ToArray();
+        if (matchIndices.Any(i => i < 0))
             throw new InvalidOperationException(
-                $"Уникальное поле «{cfg.UniqueColumn}» не найдено среди копируемых колонок."
+                $"Одно из полей сопоставления «{string.Join("», «", cfg.MatchColumns)}» не найдено среди копируемых колонок."
             );
 
-        // Обновляются все колонки, кроме уникального поля, первичного ключа и identity.
+        // Обновляются все колонки, кроме полей сопоставления, первичного ключа и identity.
         var updateColumns = insertColumns
-            .Where(c => !string.Equals(c, cfg.UniqueColumn, StringComparison.OrdinalIgnoreCase))
+            .Where(c => !cfg.MatchColumns.Contains(c, StringComparer.OrdinalIgnoreCase))
             .Where(c => !tgt.PrimaryKeyColumns.Contains(c, StringComparer.OrdinalIgnoreCase))
             .ToList();
 
-        // Колонка, значение которой попадает в сопоставление ID: identity, иначе первичный ключ, иначе уникальное поле.
-        var mappedColumn = identity ?? tgt.PrimaryKeyColumns.FirstOrDefault() ?? cfg.UniqueColumn;
+        // Колонка, значение которой попадает в сопоставление ID: identity, иначе первичный ключ, иначе первое поле сопоставления.
+        var mappedColumn =
+            identity ?? tgt.PrimaryKeyColumns.FirstOrDefault() ?? cfg.MatchColumns[0];
         var mappedColumnIsIdentity =
             identity is not null
             && string.Equals(mappedColumn, identity, StringComparison.OrdinalIgnoreCase);
@@ -253,13 +260,13 @@ public sealed class DataCopyEngine
                 src.Name,
                 CopyStage.LoadingTargetMap,
                 0,
-                $"Загрузка соответствий по полю «{cfg.UniqueColumn}»..."
+                $"Загрузка соответствий по полям «{string.Join("», «", cfg.MatchColumns)}»..."
             )
         );
 
         var matchMap = await _target.LoadMatchMapAsync(
             src.Name,
-            cfg.UniqueColumn,
+            cfg.MatchColumns,
             mappedColumn,
             ct
         );
@@ -328,7 +335,7 @@ public sealed class DataCopyEngine
 
             await _target.UpdateRowsAsync(
                 tgt,
-                cfg.UniqueColumn,
+                cfg.MatchColumns,
                 readColumns,
                 updateColumns,
                 pendingUpdates.Select(p => p.Values).ToList(),
@@ -339,10 +346,10 @@ public sealed class DataCopyEngine
             for (var i = 0; i < pendingUpdates.Count; i++)
             {
                 var pending = pendingUpdates[i];
-                var key = pending.Values[uniqueIndex];
-                if (key is null || !matchMap.TryGetValue(key, out var newMappedId))
+                var key = new CompositeKey(matchIndices.Select(idx => pending.Values[idx]));
+                if (!matchMap.TryGetValue(key, out var newMappedId))
                     throw new InvalidOperationException(
-                        $"Не удалось определить целевой ID для строки с полем «{cfg.UniqueColumn}» = «{key}»."
+                        $"Не удалось определить целевой ID для строки с полями «{string.Join("», «", cfg.MatchColumns)}» = «{key}»."
                     );
 
                 RecordMappings(
@@ -398,11 +405,11 @@ public sealed class DataCopyEngine
                     raw[columnIndex] = null;
             }
 
-            var uniqueValue = raw[uniqueIndex];
-            var pending =
-                uniqueValue is not null && matchMap.ContainsKey(uniqueValue)
-                    ? pendingUpdates
-                    : pendingInserts;
+            var keyValues = matchIndices.Select(idx => raw[idx]).ToArray();
+            var isMatch =
+                keyValues.All(v => v is not null)
+                && matchMap.ContainsKey(new CompositeKey(keyValues));
+            var pending = isMatch ? pendingUpdates : pendingInserts;
             pending.Add(new PendingRow(raw, selfRefEntries));
 
             if (pendingInserts.Count >= batchSize)

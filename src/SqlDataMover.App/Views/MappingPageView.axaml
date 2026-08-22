@@ -10,7 +10,7 @@
     <DockPanel>
         <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,12">
             <TextBlock Text="Шаг 3. Поля сопоставления и копирование" FontSize="20" FontWeight="SemiBold"/>
-            <TextBlock Text="Для каждой таблицы укажите уникальное поле, по которому строки источника сопоставляются с уже существующими строками приёмника. Найденные строки обновляются, отсутствующие — вставляются."
+            <TextBlock Text="Для каждой таблицы отметьте одно или несколько полей: комбинация их значений сопоставляет строки источника с уже существующими строками приёмника. Совпавшие строки обновляются, отсутствующие — вставляются."
                        Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap"/>
         </StackPanel>
 
@@ -22,12 +22,22 @@
                         <ItemsControl ItemsSource="{Binding Tables}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="vm:TableMappingViewModel">
-                                    <Grid ColumnDefinitions="*,260" Margin="8,3">
-                                        <TextBlock Text="{Binding Display}" VerticalAlignment="Center"/>
-                                        <ComboBox Grid.Column="1" ItemsSource="{Binding Columns}"
-                                                  SelectedItem="{Binding SelectedColumn}"
-                                                  PlaceholderText="Выберите уникальное поле"/>
-                                    </Grid>
+                                    <StackPanel Margin="8,3" Spacing="2">
+                                        <TextBlock Text="{Binding Display}" FontWeight="SemiBold"/>
+                                        <ItemsControl ItemsSource="{Binding Columns}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="vm:ColumnChoiceViewModel">
+                                                    <CheckBox Content="{Binding Name}" IsChecked="{Binding IsSelected}"
+                                                              Margin="0,0,14,0"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

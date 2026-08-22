@@ -65,7 +65,7 @@ public partial class TablesPageViewModel : ViewModelBase
         _allSchemas
             .SelectMany(s => s.AllTables)
             .Where(t => t.IsChecked)
-            .Select(t => new TableCopyConfig { Table = t.Table.Name, UniqueColumn = "" })
+            .Select(t => new TableCopyConfig { Table = t.Table.Name, MatchColumns = [] })
             .ToList();
 
     partial void OnFilterTextChanged(string value) => ApplyFilter();

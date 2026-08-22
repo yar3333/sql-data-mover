@@ -48,8 +48,8 @@ public class DataCopyEngineTests
         return table;
     }
 
-    private static TableCopyConfig Config(DbObjectName table, string uniqueColumn) =>
-        new() { Table = table, UniqueColumn = uniqueColumn };
+    private static TableCopyConfig Config(DbObjectName table, params string[] matchColumns) =>
+        new() { Table = table, MatchColumns = matchColumns };
 
     [Fact]
     public async Task Copy_remaps_identity_and_substitutes_foreign_keys()
@@ -94,7 +94,7 @@ public class DataCopyEngineTests
     [Fact]
     public async Task Copy_matches_by_unique_column_that_is_not_pk()
     {
-        // Источник: колонки Id (identity), Code (уникальное поле), Name.
+        // Источник: колонки Id (identity), Code (поле сопоставления), Name.
         var srcCustomers = new FakeTable
         {
             Meta = TestTables.Table(
@@ -248,5 +248,351 @@ public class DataCopyEngineTests
         Assert.False(ordersResult.Success);
         Assert.Contains("Нет сопоставления ID", ordersResult.Error);
         Assert.Empty(target.GetTable(Orders).Rows); // транзакция откачена
+    }
+
+    [Fact]
+    public async Task Copy_matches_by_composite_match_columns()
+    {
+        // Ключ сопоставления — комбинация (Region, Code): одна строка совпадает с целью,
+        // вторая отличается только Region (тот же Code), третья содержит NULL в ключе.
+        var srcCustomers = new FakeTable
+        {
+            Meta = TestTables.Table(
+                "dbo",
+                "Customers",
+                [
+                    TestTables.Col("Id", identity: true, pk: true),
+                    TestTables.Col("Region"),
+                    TestTables.Col("Code"),
+                    TestTables.Col("Name"),
+                ]
+            ),
+            Rows =
+            {
+                new object?[] { 100, "EU", "X1", "new" }, // совпадает с (EU, X1) в цели → UPDATE
+                new object?[] { 101, "US", "X1", "other" }, // нет в цели → INSERT
+                new object?[] { 102, null, "Y", "noKey" }, // NULL в ключе → всегда INSERT
+            },
+        };
+        var tgtCustomers = new FakeTable
+        {
+            Meta = srcCustomers.Meta,
+            Rows = { new object?[] { 5, "EU", "X1", "old" } },
+        };
+
+        var source = new FakeProvider(srcCustomers);
+        var target = new FakeProvider(tgtCustomers);
+
+        var engine = new DataCopyEngine(source, target);
+        var result = await engine.CopyAsync(
+            [Config(Customers, "Region", "Code")],
+            CancellationToken.None
+        );
+
+        Assert.True(
+            result.Success,
+            string.Join("; ", result.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        var rows = target.GetTable(Customers).Rows;
+        Assert.Equal(3, rows.Count);
+
+        // (EU, X1) обновлён: Id остался 5, Name = new.
+        Assert.Equal(5, rows[0][0]);
+        Assert.Equal("new", rows[0][3]);
+
+        // (US, X1) вставлен с новым Id, несмотря на совпадающий Code.
+        Assert.Equal(6, rows[1][0]);
+        Assert.Equal("US", rows[1][1]);
+
+        // (NULL, Y) вставлен: NULL в любом поле ключа исключает сопоставление.
+        Assert.Equal(7, rows[2][0]);
+        Assert.Null(rows[2][1]);
+
+        var customersResult = result.Tables.Single(t => t.Table == Customers);
+        Assert.Equal(2, customersResult.Inserted);
+        Assert.Equal(1, customersResult.Updated);
+    }
+
+    [Fact]
+    public async Task Copy_with_composite_key_substitutes_foreign_keys_for_updated_rows()
+    {
+        // Родитель сопоставляется по (Region, Code) и обновляется (Id сохраняется);
+        // дочерняя таблица должна получить в FK новый/сохранённый ID из сопоставления.
+        var srcCustomers = new FakeTable
+        {
+            Meta = TestTables.Table(
+                "dbo",
+                "Customers",
+                [
+                    TestTables.Col("Id", identity: true, pk: true),
+                    TestTables.Col("Region"),
+                    TestTables.Col("Code"),
+                    TestTables.Col("Name"),
+                ]
+            ),
+            Rows = { new object?[] { 100, "EU", "X1", "new" } },
+        };
+        var srcOrders = new FakeTable
+        {
+            Meta = TestTables.Table(
+                "dbo",
+                "Orders",
+                [TestTables.Col("Id", identity: true, pk: true), TestTables.Col("CustomerId")],
+                TestTables.Fk(
+                    "FK_Orders_Customers",
+                    "dbo",
+                    "Orders",
+                    "CustomerId",
+                    "dbo",
+                    "Customers",
+                    "Id"
+                )
+            ),
+            Rows = { new object?[] { 1, 100 } },
+        };
+        var tgtCustomers = new FakeTable
+        {
+            Meta = srcCustomers.Meta,
+            Rows = { new object?[] { 5, "EU", "X1", "old" } },
+        };
+        var tgtOrders = new FakeTable { Meta = srcOrders.Meta };
+
+        var source = new FakeProvider(srcCustomers, srcOrders);
+        var target = new FakeProvider(tgtCustomers, tgtOrders);
+
+        var engine = new DataCopyEngine(source, target);
+        var result = await engine.CopyAsync(
+            [Config(Customers, "Region", "Code"), Config(Orders, "Id")],
+            CancellationToken.None
+        );
+
+        Assert.True(
+            result.Success,
+            string.Join("; ", result.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        var customers = target.GetTable(Customers).Rows;
+        Assert.Single(customers);
+        Assert.Equal(5, customers[0][0]); // Id сохранён при обновлении
+        Assert.Equal("new", customers[0][3]);
+
+        var orders = target.GetTable(Orders).Rows;
+        Assert.Single(orders);
+        Assert.Equal(5, orders[0][1]); // CustomerId 100 → 5
+
+        var customersResult = result.Tables.Single(t => t.Table == Customers);
+        Assert.Equal(1, customersResult.Updated);
+        Assert.Equal(0, customersResult.Inserted);
+        Assert.Equal(1, customersResult.Mapped);
+    }
+
+    [Fact]
+    public async Task Copy_matches_composite_key_case_insensitively()
+    {
+        // Значения в цели записаны в другом регистре — комбинация всё равно считается ключом.
+        var srcCustomers = new FakeTable
+        {
+            Meta = TestTables.Table(
+                "dbo",
+                "Customers",
+                [
+                    TestTables.Col("Id", identity: true, pk: true),
+                    TestTables.Col("Region"),
+                    TestTables.Col("Code"),
+                    TestTables.Col("Name"),
+                ]
+            ),
+            Rows = { new object?[] { 100, "EU", "X1", "new" } },
+        };
+        var tgtCustomers = new FakeTable
+        {
+            Meta = srcCustomers.Meta,
+            Rows = { new object?[] { 5, "eu", "x1", "old" } },
+        };
+
+        var source = new FakeProvider(srcCustomers);
+        var target = new FakeProvider(tgtCustomers);
+
+        var engine = new DataCopyEngine(source, target);
+        var result = await engine.CopyAsync(
+            [Config(Customers, "Region", "Code")],
+            CancellationToken.None
+        );
+
+        Assert.True(result.Success);
+
+        var rows = target.GetTable(Customers).Rows;
+        Assert.Single(rows);
+        Assert.Equal(5, rows[0][0]); // обновление, а не вставка
+        Assert.Equal("new", rows[0][3]);
+
+        var customersResult = result.Tables.Single(t => t.Table == Customers);
+        Assert.Equal(1, customersResult.Updated);
+        Assert.Equal(0, customersResult.Inserted);
+    }
+
+    [Fact]
+    public async Task Copy_matches_by_composite_key_without_identity()
+    {
+        // Нет identity: целевой ID сопоставления — первичный ключ.
+        var srcCustomers = new FakeTable
+        {
+            Meta = TestTables.Table(
+                "dbo",
+                "Customers",
+                [
+                    TestTables.Col("Id", pk: true),
+                    TestTables.Col("Region"),
+                    TestTables.Col("Code"),
+                    TestTables.Col("Name"),
+                ]
+            ),
+            Rows =
+            {
+                new object?[] { 10, "EU", "X1", "new" },
+                new object?[] { 20, "US", "X2", "other" },
+            },
+        };
+        var tgtCustomers = new FakeTable
+        {
+            Meta = srcCustomers.Meta,
+            Rows = { new object?[] { 1, "EU", "X1", "old" } },
+        };
+
+        var source = new FakeProvider(srcCustomers);
+        var target = new FakeProvider(tgtCustomers);
+
+        var engine = new DataCopyEngine(source, target);
+        var result = await engine.CopyAsync(
+            [Config(Customers, "Region", "Code")],
+            CancellationToken.None
+        );
+
+        Assert.True(
+            result.Success,
+            string.Join("; ", result.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        var rows = target.GetTable(Customers).Rows;
+        Assert.Equal(2, rows.Count);
+
+        // (EU, X1) обновлён: Id остался 1.
+        Assert.Equal(1, rows[0][0]);
+        Assert.Equal("new", rows[0][3]);
+
+        // (US, X2) вставлен: Id = значение PK источника (20), identity нет.
+        Assert.Equal(20, rows[1][0]);
+        Assert.Equal("US", rows[1][1]);
+    }
+
+    [Fact]
+    public async Task Copy_matches_by_composite_key_without_pk_or_identity()
+    {
+        // Ни PK, ни identity: целевая колонка сопоставления ID — первое поле сопоставления.
+        var srcCustomers = new FakeTable
+        {
+            Meta = TestTables.Table(
+                "dbo",
+                "Customers",
+                [TestTables.Col("Region"), TestTables.Col("Code"), TestTables.Col("Name")]
+            ),
+            Rows = { new object?[] { "EU", "X1", "new" }, new object?[] { "US", "X2", "other" } },
+        };
+        var tgtCustomers = new FakeTable
+        {
+            Meta = srcCustomers.Meta,
+            Rows = { new object?[] { "EU", "X1", "old" } },
+        };
+
+        var source = new FakeProvider(srcCustomers);
+        var target = new FakeProvider(tgtCustomers);
+
+        var engine = new DataCopyEngine(source, target);
+        var result = await engine.CopyAsync(
+            [Config(Customers, "Region", "Code")],
+            CancellationToken.None
+        );
+
+        Assert.True(
+            result.Success,
+            string.Join("; ", result.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        var rows = target.GetTable(Customers).Rows;
+        Assert.Equal(2, rows.Count);
+        Assert.Equal("EU", rows[0][0]);
+        Assert.Equal("new", rows[0][2]);
+        Assert.Equal("US", rows[1][0]);
+        Assert.Equal("other", rows[1][2]);
+    }
+
+    [Fact]
+    public async Task Copy_reports_error_when_no_match_columns()
+    {
+        var source = new FakeProvider(CustomerTable([new object?[] { 10, "A" }]));
+        var target = new FakeProvider(CustomerTable([]));
+
+        var engine = new DataCopyEngine(source, target);
+        var result = await engine.CopyAsync([Config(Customers)], CancellationToken.None);
+
+        var customersResult = result.Tables.Single(t => t.Table == Customers);
+        Assert.False(customersResult.Success);
+        Assert.Contains("Не указаны поля сопоставления", customersResult.Error);
+        Assert.Empty(target.GetTable(Customers).Rows);
+    }
+
+    [Fact]
+    public async Task Copy_reports_error_when_match_column_does_not_exist()
+    {
+        var source = new FakeProvider(CustomerTable([new object?[] { 10, "A" }]));
+        var target = new FakeProvider(CustomerTable([]));
+
+        var engine = new DataCopyEngine(source, target);
+        var result = await engine.CopyAsync([Config(Customers, "Nope")], CancellationToken.None);
+
+        var customersResult = result.Tables.Single(t => t.Table == Customers);
+        Assert.False(customersResult.Success);
+        Assert.Contains("«Nope» не найдена", customersResult.Error);
+        Assert.Empty(target.GetTable(Customers).Rows);
+    }
+
+    [Fact]
+    public async Task Copy_reports_error_when_match_column_is_computed()
+    {
+        // Вычисляемая колонка есть в таблице, но не входит в копируемые колонки.
+        var srcCustomers = new FakeTable
+        {
+            Meta = TestTables.Table(
+                "dbo",
+                "Customers",
+                [
+                    TestTables.Col("Id", identity: true, pk: true),
+                    TestTables.Col("Name"),
+                    new DbColumn
+                    {
+                        Name = "FullName",
+                        DataType = "nvarchar(200)",
+                        IsComputed = true,
+                    },
+                ]
+            ),
+            Rows = { new object?[] { 10, "A", "A" } },
+        };
+        var tgtCustomers = new FakeTable { Meta = srcCustomers.Meta };
+
+        var source = new FakeProvider(srcCustomers);
+        var target = new FakeProvider(tgtCustomers);
+
+        var engine = new DataCopyEngine(source, target);
+        var result = await engine.CopyAsync(
+            [Config(Customers, "FullName")],
+            CancellationToken.None
+        );
+
+        var customersResult = result.Tables.Single(t => t.Table == Customers);
+        Assert.False(customersResult.Success);
+        Assert.Contains("не найдено среди копируемых колонок", customersResult.Error);
+        Assert.Empty(target.GetTable(Customers).Rows);
     }
 }

@@ -47,19 +47,35 @@ internal sealed class FakeProvider : IDbProvider
 
     public Task<Dictionary<object, object>> LoadMatchMapAsync(
         DbObjectName table,
-        string uniqueColumn,
+        IReadOnlyList<string> matchColumns,
         string mappedColumn,
         CancellationToken ct = default
     )
     {
         var ft = _tables[table];
-        var ui = ft.ColumnIndex(uniqueColumn);
+        var matchIndices = matchColumns.Select(c => ft.ColumnIndex(c)).ToArray();
         var mi = ft.ColumnIndex(mappedColumn);
-        var map = new Dictionary<object, object>(ObjectKeyComparer.Instance);
+        var map = new Dictionary<object, object>();
 
         foreach (var row in ft.Rows)
-            if (row[ui] is not null)
-                map[row[ui]!] = row[mi]!;
+        {
+            var keyValues = new object?[matchIndices.Length];
+            var isNull = false;
+            for (var i = 0; i < matchIndices.Length; i++)
+            {
+                if (row[matchIndices[i]] is null)
+                {
+                    isNull = true;
+                    break;
+                }
+                keyValues[i] = row[matchIndices[i]];
+            }
+
+            if (isNull)
+                continue;
+
+            map[new CompositeKey(keyValues)] = row[mi]!;
+        }
 
         return Task.FromResult(map);
     }
@@ -91,7 +107,7 @@ internal sealed class FakeProvider : IDbProvider
 
     public Task<int> UpdateRowsAsync(
         DbTable table,
-        string uniqueColumn,
+        IReadOnlyList<string> matchColumns,
         IReadOnlyList<string> allColumns,
         IReadOnlyList<string> updateColumns,
         IReadOnlyList<object?[]> rows,
@@ -100,8 +116,8 @@ internal sealed class FakeProvider : IDbProvider
     )
     {
         var ft = _tables[table.Name];
-        var uniqueIndex = ft.ColumnIndex(uniqueColumn);
-        var keyIndex = IndexIn(allColumns, uniqueColumn);
+        var matchIndicesInRow = matchColumns.Select(c => IndexIn(allColumns, c)).ToArray();
+        var matchIndicesInTable = matchColumns.Select(c => ft.ColumnIndex(c)).ToArray();
         var updateIndices = updateColumns
             .Select(c => (Column: c, Index: IndexIn(allColumns, c)))
             .ToArray();
@@ -109,9 +125,14 @@ internal sealed class FakeProvider : IDbProvider
 
         foreach (var row in rows)
         {
-            var key = row[keyIndex];
             var target = ft.Rows.FirstOrDefault(r =>
-                r[uniqueIndex] is not null && ObjectKeyComparer.Instance.Equals(r[uniqueIndex], key)
+                matchIndicesInTable
+                    .Select(
+                        (idx, i) =>
+                            r[idx] is not null
+                            && ObjectKeyComparer.Instance.Equals(r[idx], row[matchIndicesInRow[i]])
+                    )
+                    .All(b => b)
             );
             if (target is null)
                 continue;
