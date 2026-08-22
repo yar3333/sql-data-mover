@@ -1,0 +1,70 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SqlDataMover.App.ViewModels"
+             xmlns:core="using:SqlDataMover.Core.Abstractions"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
+             x:Class="SqlDataMover.App.Views.ConnectionPageView"
+             x:DataType="vm:ConnectionPageViewModel">
+
+    <ScrollViewer>
+        <StackPanel Spacing="14" MaxWidth="840" HorizontalAlignment="Stretch">
+            <StackPanel Spacing="4">
+                <TextBlock Text="Шаг 1. Подключение" FontSize="20" FontWeight="SemiBold"/>
+                <TextBlock Text="Укажите тип СУБД и строки подключения источника и приёмника (формат connection string C#)."
+                           Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <Border Classes="card">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Тип СУБД" FontWeight="SemiBold"/>
+                    <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding SelectedProvider}"
+                              Width="280" HorizontalAlignment="Left">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate DataType="core:ProviderDescriptor">
+                                <TextBlock Text="{Binding DisplayName}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </StackPanel>
+            </Border>
+
+            <Border Classes="card">
+                <StackPanel Spacing="14">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Источник (source)" FontWeight="SemiBold"/>
+                        <TextBox Text="{Binding SourceConnectionString}"
+                                 PlaceholderText="Server=localhost;Database=SourceDb;Trusted_Connection=True;Encrypt=False"
+                                 MinHeight="54" TextWrapping="Wrap" AcceptsReturn="True"
+                                 FontFamily="Consolas,Menlo,monospace" FontSize="13"/>
+                        <TextBlock Text="{Binding SourceStatus}" Foreground="{DynamicResource SuccessBrush}" FontSize="12"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Приёмник (target)" FontWeight="SemiBold"/>
+                        <TextBox Text="{Binding TargetConnectionString}"
+                                 PlaceholderText="Server=localhost;Database=TargetDb;Trusted_Connection=True;Encrypt=False"
+                                 MinHeight="54" TextWrapping="Wrap" AcceptsReturn="True"
+                                 FontFamily="Consolas,Menlo,monospace" FontSize="13"/>
+                        <TextBlock Text="{Binding TargetStatus}" Foreground="{DynamicResource SuccessBrush}" FontSize="12"/>
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Button Content="Подключиться" Command="{Binding ConnectCommand}" Classes="primary"
+                                IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Left"/>
+                        <ProgressBar Grid.Column="1" IsIndeterminate="{Binding IsBusy}" IsVisible="{Binding IsBusy}"
+                                     Height="6" Margin="16,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <Border Classes="card" Padding="16" Background="{DynamicResource ChipInactive}">
+                <TextBlock Text="Как это работает: таблицы копируются в порядке зависимостей по внешним ключам. Автоинкрементные ID переназначаются, соответствие старых и новых ID хранится в памяти и подставляется во внешние ключи зависимых таблиц."
+                           TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" FontSize="13"/>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

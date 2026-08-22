@@ -1,0 +1,80 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="SqlDataMover.App.App"
+             xmlns:local="using:SqlDataMover.App"
+             RequestedThemeVariant="Default">
+
+    <Application.DataTemplates>
+        <local:ViewLocator />
+    </Application.DataTemplates>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="AppBackground" Color="#F2F4F8"/>
+                    <SolidColorBrush x:Key="CardBackground" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="CardBorder" Color="#E2E6EE"/>
+                    <SolidColorBrush x:Key="AccentBrush" Color="#3B5BDB"/>
+                    <SolidColorBrush x:Key="TextMutedBrush" Color="#6B7280"/>
+                    <SolidColorBrush x:Key="SuccessBrush" Color="#2B8A3E"/>
+                    <SolidColorBrush x:Key="DangerBrush" Color="#E03131"/>
+                    <SolidColorBrush x:Key="ChipInactive" Color="#DDE1E9"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="AppBackground" Color="#17181C"/>
+                    <SolidColorBrush x:Key="CardBackground" Color="#212328"/>
+                    <SolidColorBrush x:Key="CardBorder" Color="#33363E"/>
+                    <SolidColorBrush x:Key="AccentBrush" Color="#748FFC"/>
+                    <SolidColorBrush x:Key="TextMutedBrush" Color="#9CA3AF"/>
+                    <SolidColorBrush x:Key="SuccessBrush" Color="#69DB7C"/>
+                    <SolidColorBrush x:Key="DangerBrush" Color="#FF6B6B"/>
+                    <SolidColorBrush x:Key="ChipInactive" Color="#2C2F36"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme />
+
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource CardBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="20"/>
+        </Style>
+
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="22,9"/>
+        </Style>
+
+        <Style Selector="Border.step-circle">
+            <Setter Property="Background" Value="{DynamicResource ChipInactive}"/>
+            <Setter Property="CornerRadius" Value="13"/>
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="26"/>
+        </Style>
+        <Style Selector="Border.step-circle.active">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+        </Style>
+        <Style Selector="Border.step-circle TextBlock">
+            <Setter Property="Foreground" Value="#8A8F98"/>
+        </Style>
+        <Style Selector="Border.step-circle.active TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="TextBlock.step-label">
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.step-label.active">
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+    </Application.Styles>
+</Application>

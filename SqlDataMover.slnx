@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SqlDataMover.App/SqlDataMover.App.csproj" />
+    <Project Path="src/SqlDataMover.Core/SqlDataMover.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SqlDataMover.Core.Tests/SqlDataMover.Core.Tests.csproj" />
+  </Folder>
+</Solution>

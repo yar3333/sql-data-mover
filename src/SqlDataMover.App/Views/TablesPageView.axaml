@@ -1,0 +1,41 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SqlDataMover.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
+             x:Class="SqlDataMover.App.Views.TablesPageView"
+             x:DataType="vm:TablesPageViewModel">
+
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,12">
+            <TextBlock Text="Шаг 2. Выбор таблиц" FontSize="20" FontWeight="SemiBold"/>
+            <TextBlock Text="Отметьте таблицы для копирования: схема → таблицы."
+                       Foreground="{DynamicResource TextMutedBrush}"/>
+        </StackPanel>
+
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
+            <TextBox Text="{Binding FilterText}" PlaceholderText="Фильтр по имени таблицы или схемы..."
+                     Width="320" HorizontalAlignment="Left"/>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="18" VerticalAlignment="Center">
+                <TextBlock Text="{Binding SelectedCount, StringFormat='Выбрано: {0}'}" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding TotalCount, StringFormat='Всего: {0}'}"
+                           Foreground="{DynamicResource TextMutedBrush}"/>
+            </StackPanel>
+        </Grid>
+
+        <Border Classes="card" Padding="6">
+            <TreeView ItemsSource="{Binding Schemas}">
+                <TreeView.DataTemplates>
+                    <TreeDataTemplate DataType="vm:SchemaNodeViewModel" ItemsSource="{Binding VisibleTables}">
+                        <CheckBox IsChecked="{Binding IsChecked}" IsThreeState="True"
+                                  Content="{Binding Name}" FontWeight="SemiBold" Margin="4,2"/>
+                    </TreeDataTemplate>
+                    <TreeDataTemplate DataType="vm:TableNodeViewModel">
+                        <CheckBox IsChecked="{Binding IsChecked}" Content="{Binding Display}" Margin="4,2"/>
+                    </TreeDataTemplate>
+                </TreeView.DataTemplates>
+            </TreeView>
+        </Border>
+    </DockPanel>
+</UserControl>

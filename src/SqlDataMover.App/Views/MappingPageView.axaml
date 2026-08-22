@@ -1,0 +1,74 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SqlDataMover.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
+             x:Class="SqlDataMover.App.Views.MappingPageView"
+             x:DataType="vm:MappingPageViewModel">
+
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,12">
+            <TextBlock Text="Шаг 3. Поля сопоставления и копирование" FontSize="20" FontWeight="SemiBold"/>
+            <TextBlock Text="Для каждой таблицы укажите уникальное поле, по которому строки источника сопоставляются с уже существующими строками приёмника. Найденные строки обновляются, отсутствующие — вставляются."
+                       Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <Border DockPanel.Dock="Top" Classes="card" Padding="8" Margin="0,0,0,12" IsEnabled="{Binding !IsCopying}">
+            <Grid>
+                <StackPanel Spacing="8" IsVisible="{Binding !IsBusy}">
+                    <TextBlock Text="Таблицы для копирования" FontWeight="SemiBold" Margin="8,4,0,0"/>
+                    <ScrollViewer MaxHeight="300">
+                        <ItemsControl ItemsSource="{Binding Tables}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:TableMappingViewModel">
+                                    <Grid ColumnDefinitions="*,260" Margin="8,3">
+                                        <TextBlock Text="{Binding Display}" VerticalAlignment="Center"/>
+                                        <ComboBox Grid.Column="1" ItemsSource="{Binding Columns}"
+                                                  SelectedItem="{Binding SelectedColumn}"
+                                                  PlaceholderText="Выберите уникальное поле"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+                <StackPanel Spacing="8" IsVisible="{Binding IsBusy}">
+                    <TextBlock Text="Загрузка колонок..." Foreground="{DynamicResource TextMutedBrush}"/>
+                    <ProgressBar IsIndeterminate="True" Height="6"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border DockPanel.Dock="Bottom" Classes="card" Padding="12" Margin="0,12,0,0">
+            <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                    <Button Content="Запустить копирование" Command="{Binding StartCopyCommand}" Classes="primary"
+                            IsEnabled="{Binding !IsCopying}"/>
+                    <Button Grid.Column="1" Content="Отмена" Command="{Binding CancelCopyCommand}" Margin="10,0,0,0"/>
+                    <TextBlock Grid.Column="2" Text="{Binding CurrentTable}" VerticalAlignment="Center"
+                               Margin="16,0,0,0" TextWrapping="Wrap"/>
+                    <TextBlock Grid.Column="3" Text="{Binding ProcessedRows, StringFormat='Строк: {0:N0}'}"
+                               VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}"/>
+                </Grid>
+                <ProgressBar Height="6" IsIndeterminate="{Binding IsCopying}"/>
+                <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding SummaryText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card" Padding="8">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Журнал" FontWeight="SemiBold" Margin="8,4,8,6"/>
+                <ListBox x:Name="LogList" ItemsSource="{Binding Log}" MaxHeight="240">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" FontFamily="Consolas,Menlo,monospace"
+                                       FontSize="12" TextWrapping="Wrap"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+    </DockPanel>
+</UserControl>
