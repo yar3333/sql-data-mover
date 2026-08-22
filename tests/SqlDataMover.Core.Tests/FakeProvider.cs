@@ -49,6 +49,7 @@ internal sealed class FakeProvider : IDbProvider
         DbObjectName table,
         IReadOnlyList<string> matchColumns,
         string mappedColumn,
+        IDbWriteTransaction? transaction = null,
         CancellationToken ct = default
     )
     {

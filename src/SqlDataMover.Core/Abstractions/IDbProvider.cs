@@ -31,11 +31,14 @@ public interface IDbProvider : IAsyncDisposable
     /// Словарь «комбинация значений полей сопоставления → значение колонки сопоставления» для
     /// существующих строк целевой таблицы. Ключи — <see cref="CompositeKey"/>, компоненты-строки
     /// сравниваются без учёта регистра. Строки с NULL в любом поле сопоставления в словарь не попадают.
+    /// Вызывается в контексте транзакции записи, поэтому команда должна использовать
+    /// <paramref name="transaction"/>.
     /// </summary>
     Task<Dictionary<object, object>> LoadMatchMapAsync(
         DbObjectName table,
         IReadOnlyList<string> matchColumns,
         string mappedColumn,
+        IDbWriteTransaction? transaction = null,
         CancellationToken ct = default
     );
 

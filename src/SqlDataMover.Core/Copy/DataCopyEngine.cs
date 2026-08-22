@@ -268,6 +268,7 @@ public sealed class DataCopyEngine
             src.Name,
             cfg.MatchColumns,
             mappedColumn,
+            tx,
             ct
         );
 

@@ -29,6 +29,7 @@ src/SqlDataMover.App/           # Avalonia UI (net10.0), MVVM (CommunityToolkit.
   ViewModels/                   # Connection/Tables/Mapping + MainViewModel (навигация)
   Views/                        # MainWindow + 3 страницы мастера
 tests/SqlDataMover.Core.Tests/  # xunit; FakeProvider — in-memory провайдер для тестов движка
+tests/sql/setup-test-databases.sql  # подготовка БД (sql-data-mover-src/dest, схема tests) для интеграционных тестов
 ```
 
 ## Как работает копирование (DataCopyEngine)
@@ -94,3 +95,7 @@ tests/SqlDataMover.Core.Tests/  # xunit; FakeProvider — in-memory провай
   подстановка FK, сопоставление по не-PK полю и по составному ключу с обновлением (включая
   регистронезависимость, таблицы без identity/PK, FK по обновлённым строкам), самоссылки,
   порядок таблиц, ошибки конфигурации и отсутствия сопоставления.
+- SqlServerIntegrationTests — сквозной тест против локального SQL Server (строки подключения
+  захардкожены, `localhost`): сначала выполнить tests/sql/setup-test-databases.sql. Проверяет
+  реальный SqlServerProvider: составное сопоставление, переназначение identity, FK-цепочку
+  Customers → Orders → OrderItems и самоссылающуюся Employees.

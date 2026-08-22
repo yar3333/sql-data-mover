@@ -42,6 +42,13 @@ dotnet run --project src/SqlDataMover.App
 dotnet test tests/SqlDataMover.Core.Tests
 ```
 
+Интеграционный тест (`SqlServerIntegrationTests`) требует локальный SQL Server (экземпляр по
+умолчанию, trusted connection). Перед первым запуском подготовьте тестовые БД:
+
+```bash
+sqlcmd -S localhost -E -i tests/sql/setup-test-databases.sql
+```
+
 ## Использование
 
 Мастер из трёх шагов:

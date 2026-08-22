@@ -228,6 +228,7 @@ public sealed class SqlServerProvider : IDbProvider
         DbObjectName table,
         IReadOnlyList<string> matchColumns,
         string mappedColumn,
+        IDbWriteTransaction? transaction = null,
         CancellationToken ct = default
     )
     {
@@ -236,7 +237,10 @@ public sealed class SqlServerProvider : IDbProvider
         var select = string.Join(", ", matchColumns.Select(Quote).Append(Quote(mappedColumn)));
         var sql = $"SELECT {select} FROM {QuoteTable(table)} WHERE {where}";
 
-        await using var cmd = new SqlCommand(sql, _connection);
+        await using var cmd = new SqlCommand(sql, _connection)
+        {
+            Transaction = GetSqlTransaction(transaction),
+        };
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
