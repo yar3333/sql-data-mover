@@ -27,6 +27,15 @@ public partial class PreviewPageViewModel : ViewModelBase
     private IReadOnlyList<TableCopyConfig>? _configs;
     private CancellationTokenSource? _cts;
 
+    /// <summary>Число строк по каждой таблице из последнего предпросмотра (в порядке копирования).</summary>
+    private IReadOnlyList<(DbObjectName Table, long Rows)> _previewRows = [];
+
+    /// <summary>Префиксные суммы строк: prefix[i] — строки таблиц до индекса i.</summary>
+    private long[] _prefixRows = [];
+
+    private long _totalRows;
+    private int _currentTableIndex = -1;
+
     public ObservableCollection<PreviewTableRow> Tables { get; } = [];
     public ObservableCollection<string> Log { get; } = [];
 
@@ -50,6 +59,17 @@ public partial class PreviewPageViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial long ProcessedRows { get; set; }
+
+    /// <summary>Общий прогресс копирования в процентах (знаменатель — строки из предпросмотра).</summary>
+    [ObservableProperty]
+    public partial double ProgressPercent { get; set; }
+
+    /// <summary>Текст прогресса вида «45% · 4 500 / 10 000 строк».</summary>
+    [ObservableProperty]
+    public partial string? ProgressText { get; set; }
+
+    /// <summary>Полоса неопределённая, пока идёт сам предпросмотр или нет данных для расчёта процентов.</summary>
+    public bool IsProgressIndeterminate => IsBusy || _previewRows.Count == 0;
 
     [ObservableProperty]
     public partial string? StatusText { get; set; }
@@ -113,6 +133,14 @@ public partial class PreviewPageViewModel : ViewModelBase
                 );
             }
 
+            // Число строк по таблицам из предпросмотра — знаменатель для честного процента при копировании.
+            _previewRows = result.Tables.Select(t => (t.Table, t.RowsRead)).ToList();
+            _prefixRows = new long[_previewRows.Count + 1];
+            for (var i = 0; i < _previewRows.Count; i++)
+                _prefixRows[i + 1] = _prefixRows[i] + _previewRows[i].Rows;
+            _totalRows = _prefixRows[^1];
+            OnPropertyChanged(nameof(IsProgressIndeterminate));
+
             var failed = result.Tables.Count(t => !t.Success);
             var totalInserted = result.Tables.Sum(t => t.Inserted);
             var totalUpdated = result.Tables.Sum(t => t.Updated);
@@ -149,7 +177,14 @@ public partial class PreviewPageViewModel : ViewModelBase
         StatusText = null;
         CurrentTable = "";
         ProcessedRows = 0;
+        ProgressPercent = 0;
+        ProgressText = null;
         HasPreview = false;
+        _previewRows = [];
+        _prefixRows = [];
+        _totalRows = 0;
+        _currentTableIndex = -1;
+        OnPropertyChanged(nameof(IsProgressIndeterminate));
     }
 
     [RelayCommand(CanExecute = nameof(CanStartCopy))]
@@ -162,6 +197,9 @@ public partial class PreviewPageViewModel : ViewModelBase
         SummaryText = null;
         CurrentTable = "";
         ProcessedRows = 0;
+        ProgressPercent = 0;
+        ProgressText = null;
+        _currentTableIndex = -1;
         _cts = new CancellationTokenSource();
         IsCopying = true;
         CanCancel = true;
@@ -180,6 +218,9 @@ public partial class PreviewPageViewModel : ViewModelBase
             var totalInserted = result.Tables.Sum(t => t.Inserted);
             var totalUpdated = result.Tables.Sum(t => t.Updated);
             var failed = result.Tables.Count(t => !t.Success);
+
+            if (failed == 0)
+                ProgressPercent = 100;
 
             SummaryText =
                 failed == 0
@@ -208,7 +249,11 @@ public partial class PreviewPageViewModel : ViewModelBase
 
     partial void OnCanCancelChanged(bool value) => CancelCopyCommand.NotifyCanExecuteChanged();
 
-    partial void OnIsBusyChanged(bool value) => UpdateCanStartCopy();
+    partial void OnIsBusyChanged(bool value)
+    {
+        UpdateCanStartCopy();
+        OnPropertyChanged(nameof(IsProgressIndeterminate));
+    }
 
     partial void OnIsCopyingChanged(bool value) => UpdateCanStartCopy();
 
@@ -223,6 +268,38 @@ public partial class PreviewPageViewModel : ViewModelBase
             : progress.Table.ToString();
         ProcessedRows = CurrentTable.Length > 0 ? progress.ProcessedRows : 0;
         AddLog(progress.Message, progress.IsError);
+
+        UpdateProgressPercent(progress);
+    }
+
+    /// <summary>
+    /// Честный процент по данным предпросмотра: сумма строк завершённых таблиц (префикс)
+    /// плюс обработанные строки текущей, делённая на общее число строк из dry run.
+    /// </summary>
+    private void UpdateProgressPercent(CopyProgress progress)
+    {
+        if (_previewRows.Count == 0 || _totalRows == 0)
+            return;
+
+        var index = FindTableIndex(progress.Table);
+        if (index < 0)
+            return;
+
+        if (index != _currentTableIndex)
+            _currentTableIndex = index;
+
+        var currentRows = _previewRows[_currentTableIndex].Rows;
+        var done = _prefixRows[_currentTableIndex] + Math.Min(progress.ProcessedRows, currentRows);
+        ProgressPercent = Math.Clamp(done * 100.0 / _totalRows, 0.0, 100.0);
+        ProgressText = $"{ProgressPercent:F0}% · {done:N0} / {_totalRows:N0} строк";
+    }
+
+    private int FindTableIndex(DbObjectName table)
+    {
+        for (var i = 0; i < _previewRows.Count; i++)
+            if (_previewRows[i].Table == table)
+                return i;
+        return -1;
     }
 
     private void AddLog(string message, bool isError = false)

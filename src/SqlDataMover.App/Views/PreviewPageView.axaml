@@ -85,7 +85,10 @@
                     <TextBlock Grid.Column="3" Text="{Binding ProcessedRows, StringFormat='Строк: {0:N0}'}"
                                VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}"/>
                 </Grid>
-                <ProgressBar Height="6" IsIndeterminate="{Binding IsCopying}"/>
+                <ProgressBar Height="6" Maximum="100" Value="{Binding ProgressPercent}"
+                             IsIndeterminate="{Binding IsProgressIndeterminate}"/>
+                <TextBlock Text="{Binding ProgressText}" IsVisible="{Binding IsCopying}"
+                           Foreground="{DynamicResource TextMutedBrush}" FontSize="12"/>
                 <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap"/>
                 <TextBlock Text="{Binding SummaryText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
             </StackPanel>
