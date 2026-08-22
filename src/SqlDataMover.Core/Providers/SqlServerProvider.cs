@@ -21,6 +21,13 @@ public sealed class SqlServerProvider : IDbProvider
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
 
+        _connectionString = NormalizeConnectionString(connectionString);
+        _connection = new SqlConnection(_connectionString);
+    }
+
+    /// <summary>Дополняет строку подключения значениями по умолчанию, если они не заданы явно.</summary>
+    internal static string NormalizeConnectionString(string connectionString)
+    {
         var builder = new SqlConnectionStringBuilder(connectionString);
         // Для локальных серверов без настроенного TLS не отключаемся с ошибкой: пробуем шифрование, если возможно.
         if (!connectionString.Contains("Encrypt", StringComparison.OrdinalIgnoreCase))
@@ -29,9 +36,16 @@ public sealed class SqlServerProvider : IDbProvider
             !connectionString.Contains("TrustServerCertificate", StringComparison.OrdinalIgnoreCase)
         )
             builder.TrustServerCertificate = true;
+        // По умолчанию используется Windows-аутентификация: Trusted_Connection считается
+        // true, если в строке не заданы ни integrated security, ни SQL-логин (User ID/Password).
+        var hasAuth =
+            builder.ShouldSerialize("Integrated Security")
+            || !string.IsNullOrEmpty(builder.UserID)
+            || !string.IsNullOrEmpty(builder.Password);
+        if (!hasAuth)
+            builder.IntegratedSecurity = true;
 
-        _connectionString = builder.ConnectionString;
-        _connection = new SqlConnection(_connectionString);
+        return builder.ConnectionString;
     }
 
     public async Task ConnectAsync(CancellationToken ct = default)

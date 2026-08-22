@@ -85,6 +85,19 @@ public class SqlServerIntegrationTests
         Assert.All(tables, t => Assert.True(t.RowCount >= 0));
     }
 
+    [Fact]
+    public async Task Connects_without_explicit_trusted_connection()
+    {
+        // Регрессия: без Trusted_Connection в строке подключения провайдер
+        // подставляет Windows-аутентификацию по умолчанию.
+        await using var source = new SqlServerProvider(
+            "Server=localhost;Database=sql-data-mover-src;Encrypt=Optional;TrustServerCertificate=True"
+        );
+        await source.ConnectAsync();
+
+        Assert.True(source.IsConnected);
+    }
+
     private static async Task ResetAndSeedAsync()
     {
         await using var source = new SqlConnection(SourceConnectionString);
