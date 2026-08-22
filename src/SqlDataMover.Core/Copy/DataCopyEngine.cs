@@ -43,6 +43,7 @@ public sealed class DataCopyEngine
         var results = new List<TableCopyResult>(configs.Count);
         var byTable = configs.ToDictionary(c => c.Table);
         var selected = byTable.Keys.ToHashSet();
+        var dryRun = _settings.DryRun;
 
         Report(
             new CopyProgress(
@@ -79,11 +80,15 @@ public sealed class DataCopyEngine
                         table,
                         CopyStage.Preparing,
                         0,
-                        $"Копирование таблицы {table}..."
+                        dryRun
+                            ? $"Предпросмотр таблицы {table}..."
+                            : $"Копирование таблицы {table}..."
                     )
                 );
 
-                await using var tx = await _target.BeginTransactionAsync(ct);
+                await using IDbWriteTransaction? tx = dryRun
+                    ? null
+                    : await _target.BeginTransactionAsync(ct);
                 await CopyTableAsync(
                     cfg,
                     sourceDetails[table],
@@ -94,14 +99,17 @@ public sealed class DataCopyEngine
                     result,
                     ct
                 );
-                await tx.CommitAsync(ct);
+                if (!dryRun)
+                    await tx!.CommitAsync(ct);
 
                 Report(
                     new CopyProgress(
                         table,
                         CopyStage.Completed,
                         result.RowsRead,
-                        $"Готово: строк {result.RowsRead:N0}, вставлено {result.Inserted:N0}, обновлено {result.Updated:N0}, сопоставлено ID {result.Mapped:N0}"
+                        dryRun
+                            ? $"Предпросмотр: строк {result.RowsRead:N0}, будет вставлено {result.Inserted:N0}, будет обновлено {result.Updated:N0}"
+                            : $"Готово: строк {result.RowsRead:N0}, вставлено {result.Inserted:N0}, обновлено {result.Updated:N0}, сопоставлено ID {result.Mapped:N0}"
                     )
                 );
             }
@@ -146,11 +154,13 @@ public sealed class DataCopyEngine
         DbTable tgt,
         IReadOnlySet<DbObjectName> selected,
         IReadOnlyDictionary<DbObjectName, HashSet<string>> referencedColumnsByTable,
-        IDbWriteTransaction tx,
+        IDbWriteTransaction? tx,
         TableCopyResult result,
         CancellationToken ct
     )
     {
+        var dryRun = _settings.DryRun;
+
         if (cfg.MatchColumns.Count == 0)
             throw new InvalidOperationException("Не указаны поля сопоставления для таблицы.");
 
@@ -286,6 +296,10 @@ public sealed class DataCopyEngine
             Math.Max(1, 1500 / Math.Max(1, insertColumns.Count))
         );
 
+        // В режиме предпросмотра identity не назначается СУБД: имитируем новые ID отрицательными
+        // числами (не пересекаются с реальными значениями), чтобы корректно разрешать FK дочерних таблиц.
+        long dryRunNextId = -1;
+
         var pendingInserts = new List<PendingRow>(batchSize);
         var pendingUpdates = new List<PendingRow>(batchSize);
         long rowsRead = 0;
@@ -295,6 +309,33 @@ public sealed class DataCopyEngine
         {
             if (pendingInserts.Count == 0)
                 return;
+
+            if (dryRun)
+            {
+                foreach (var pending in pendingInserts)
+                {
+                    var newMappedId = mappedColumnIsIdentity
+                        ? dryRunNextId--
+                        : pending.Values[mappedIndex];
+                    if (newMappedId is null)
+                        throw new InvalidOperationException(
+                            $"Не получено новое значение ID при вставке в таблицу {src.Name}."
+                        );
+
+                    RecordMappings(
+                        src.Name,
+                        pending.Values,
+                        newMappedId,
+                        referencedCols,
+                        identityIndex,
+                        result
+                    );
+                    result.Inserted++;
+                }
+
+                pendingInserts.Clear();
+                return;
+            }
 
             var newIds = await _target.InsertRowsAsync(
                 tgt,
@@ -334,15 +375,18 @@ public sealed class DataCopyEngine
             if (pendingUpdates.Count == 0)
                 return;
 
-            await _target.UpdateRowsAsync(
-                tgt,
-                cfg.MatchColumns,
-                readColumns,
-                updateColumns,
-                pendingUpdates.Select(p => p.Values).ToList(),
-                tx,
-                ct
-            );
+            if (!dryRun)
+            {
+                await _target.UpdateRowsAsync(
+                    tgt,
+                    cfg.MatchColumns,
+                    readColumns,
+                    updateColumns,
+                    pendingUpdates.Select(p => p.Values).ToList(),
+                    tx,
+                    ct
+                );
+            }
 
             for (var i = 0; i < pendingUpdates.Count; i++)
             {
@@ -361,8 +405,11 @@ public sealed class DataCopyEngine
                     identityIndex,
                     result
                 );
-                foreach (var (fkColumn, parentColumn, origValue) in pending.SelfRefEntries)
-                    phase2.Add((newMappedId, fkColumn, parentColumn, origValue));
+                if (!dryRun)
+                {
+                    foreach (var (fkColumn, parentColumn, origValue) in pending.SelfRefEntries)
+                        phase2.Add((newMappedId, fkColumn, parentColumn, origValue));
+                }
                 result.Updated++;
             }
 
@@ -436,6 +483,9 @@ public sealed class DataCopyEngine
         await FlushUpdatesAsync();
 
         // Фаза 2: устанавливаем самоссылающиеся внешние ключи по завершённому сопоставлению.
+        if (dryRun)
+            return;
+
         foreach (var group in phase2.GroupBy(p => p.FkColumn))
         {
             var pairs = new List<(object? SetValue, object? WhereValue)>();

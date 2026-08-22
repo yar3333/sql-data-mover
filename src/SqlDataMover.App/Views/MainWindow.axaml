@@ -53,8 +53,16 @@
                         <Border Classes="step-circle" Classes.active="{Binding IsStep2Active}">
                             <TextBlock Text="3" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"/>
                         </Border>
-                        <TextBlock Text="Копирование" VerticalAlignment="Center" Classes="step-label"
+                        <TextBlock Text="Сопоставление" VerticalAlignment="Center" Classes="step-label"
                                    Classes.active="{Binding IsStep2Active}"/>
+                    </StackPanel>
+                    <TextBlock Text="→" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Classes="step-circle" Classes.active="{Binding IsStep3Active}">
+                            <TextBlock Text="4" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                        </Border>
+                        <TextBlock Text="Предпросмотр" VerticalAlignment="Center" Classes="step-label"
+                                   Classes.active="{Binding IsStep3Active}"/>
                     </StackPanel>
                 </StackPanel>
             </Grid>

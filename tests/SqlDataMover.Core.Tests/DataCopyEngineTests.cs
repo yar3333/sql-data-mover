@@ -595,4 +595,180 @@ public class DataCopyEngineTests
         Assert.Contains("не найдено среди копируемых колонок", customersResult.Error);
         Assert.Empty(target.GetTable(Customers).Rows);
     }
+
+    [Fact]
+    public async Task DryRun_reports_counts_without_modifying_target()
+    {
+        // Источник: 2 клиента (10, 20) и 3 заказа. Цель: клиент 10 уже есть — он обновится,
+        // клиент 20 вставится; заказы все вставятся (в цели их нет).
+        var source = new FakeProvider(
+            CustomerTable([new object?[] { 10, "A" }, new object?[] { 20, "B" }]),
+            OrderTable([new object?[] { 1, 10 }, new object?[] { 2, 20 }, new object?[] { 3, 10 }])
+        );
+        var target = new FakeProvider(CustomerTable([new object?[] { 10, "OLD" }]), OrderTable([]));
+
+        var engine = new DataCopyEngine(source, target, new CopySettings { DryRun = true });
+        var result = await engine.CopyAsync(
+            [Config(Customers, "Id"), Config(Orders, "Id")],
+            CancellationToken.None
+        );
+
+        Assert.True(
+            result.Success,
+            string.Join("; ", result.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        var customersResult = result.Tables.Single(t => t.Table == Customers);
+        Assert.Equal(2, customersResult.RowsRead);
+        Assert.Equal(1, customersResult.Inserted);
+        Assert.Equal(1, customersResult.Updated);
+
+        var ordersResult = result.Tables.Single(t => t.Table == Orders);
+        Assert.Equal(3, ordersResult.RowsRead);
+        Assert.Equal(3, ordersResult.Inserted);
+        Assert.Equal(0, ordersResult.Updated);
+
+        // Целевые таблицы не изменены: запись не выполнялась.
+        Assert.Single(target.GetTable(Customers).Rows);
+        Assert.Empty(target.GetTable(Orders).Rows);
+    }
+
+    [Fact]
+    public async Task DryRun_counts_match_real_run()
+    {
+        // Одинаковые данные для двух независимых прогонов: предпросмотр и реальное копирование
+        // должны дать одинаковые счётчики по каждой таблице.
+        static (FakeProvider Source, FakeProvider Target) Build()
+        {
+            var source = new FakeProvider(
+                CustomerTable([
+                    new object?[] { 10, "A" },
+                    new object?[] { 20, "B" },
+                    new object?[] { 30, "C" },
+                ]),
+                OrderTable([
+                    new object?[] { 1, 10 },
+                    new object?[] { 2, 20 },
+                    new object?[] { 3, 30 },
+                    new object?[] { 4, 10 },
+                ])
+            );
+            var target = new FakeProvider(
+                CustomerTable([new object?[] { 10, "OLD" }, new object?[] { 30, "EXIST" }]),
+                OrderTable([new object?[] { 1, 10 }])
+            );
+            return (source, target);
+        }
+
+        var configs = new[] { Config(Customers, "Id"), Config(Orders, "Id") };
+
+        var (srcDry, tgtDry) = Build();
+        var dryResult = await new DataCopyEngine(
+            srcDry,
+            tgtDry,
+            new CopySettings { DryRun = true }
+        ).CopyAsync(configs, CancellationToken.None);
+
+        var (srcReal, tgtReal) = Build();
+        var realResult = await new DataCopyEngine(srcReal, tgtReal).CopyAsync(
+            configs,
+            CancellationToken.None
+        );
+
+        Assert.True(
+            dryResult.Success,
+            string.Join("; ", dryResult.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+        Assert.True(
+            realResult.Success,
+            string.Join("; ", realResult.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        foreach (var table in new[] { Customers, Orders })
+        {
+            var dry = dryResult.Tables.Single(t => t.Table == table);
+            var real = realResult.Tables.Single(t => t.Table == table);
+            Assert.Equal(real.RowsRead, dry.RowsRead);
+            Assert.Equal(real.Inserted, dry.Inserted);
+            Assert.Equal(real.Updated, dry.Updated);
+            Assert.Equal(real.Mapped, dry.Mapped);
+        }
+
+        // Реальное копирование записало строки, предпросмотр — нет.
+        Assert.Equal(3, tgtReal.GetTable(Customers).Rows.Count);
+        Assert.Equal(4, tgtReal.GetTable(Orders).Rows.Count);
+        Assert.Equal(2, tgtDry.GetTable(Customers).Rows.Count);
+        Assert.Single(tgtDry.GetTable(Orders).Rows);
+    }
+
+    [Fact]
+    public async Task DryRun_handles_self_referencing_fk_without_writes()
+    {
+        var srcEmployees = new FakeTable
+        {
+            Meta = TestTables.Table(
+                "dbo",
+                "Employees",
+                [
+                    TestTables.Col("Id", identity: true, pk: true),
+                    TestTables.Col("Name"),
+                    TestTables.Col("ManagerId"),
+                ],
+                TestTables.Fk(
+                    "FK_Empl_Empl",
+                    "dbo",
+                    "Employees",
+                    "ManagerId",
+                    "dbo",
+                    "Employees",
+                    "Id"
+                )
+            ),
+            Rows =
+            {
+                new object?[] { 1, "CEO", null },
+                new object?[] { 2, "Dev1", 1 },
+                new object?[] { 3, "Dev2", 1 },
+            },
+        };
+        var tgtEmployees = new FakeTable { Meta = srcEmployees.Meta };
+
+        var source = new FakeProvider(srcEmployees);
+        var target = new FakeProvider(tgtEmployees);
+
+        var engine = new DataCopyEngine(source, target, new CopySettings { DryRun = true });
+        var result = await engine.CopyAsync([Config(Employees, "Id")], CancellationToken.None);
+
+        Assert.True(
+            result.Success,
+            string.Join("; ", result.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        var employeesResult = result.Tables.Single(t => t.Table == Employees);
+        Assert.Equal(3, employeesResult.RowsRead);
+        Assert.Equal(3, employeesResult.Inserted);
+        Assert.Equal(0, employeesResult.Updated);
+
+        Assert.Empty(target.GetTable(Employees).Rows);
+    }
+
+    [Fact]
+    public async Task DryRun_reports_missing_mapping_as_table_error()
+    {
+        // Та же ситуация, что и в реальном копировании: ссылка на выбранного родителя без данных
+        // в источнике должна проявиться в предпросмотре как ошибка таблицы.
+        var source = new FakeProvider(CustomerTable([]), OrderTable([new object?[] { 1, 999 }]));
+        var target = new FakeProvider(CustomerTable([]), OrderTable([]));
+
+        var engine = new DataCopyEngine(source, target, new CopySettings { DryRun = true });
+        var result = await engine.CopyAsync(
+            [Config(Customers, "Id"), Config(Orders, "Id")],
+            CancellationToken.None
+        );
+
+        var ordersResult = result.Tables.Single(t => t.Table == Orders);
+        Assert.False(ordersResult.Success);
+        Assert.Contains("Нет сопоставления ID", ordersResult.Error);
+        Assert.Empty(target.GetTable(Orders).Rows);
+    }
 }
