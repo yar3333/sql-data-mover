@@ -31,9 +31,19 @@ public partial class TablesPageViewModel : ViewModelBase
     /// <summary>Строка «Total: N» для шапки списка таблиц.</summary>
     public string TotalCountText => $"{AppStrings.Current.Total}: {TotalCount}";
 
-    public void LoadTables(IReadOnlyList<DbTable> tables)
+    /// <summary>
+    /// Загружает дерево таблиц. Таблицы, чьи имена ("schema.table") есть в
+    /// <paramref name="preSelected"/>, отмечаются галочкой (выбор по умолчанию).
+    /// </summary>
+    public void LoadTables(
+        IReadOnlyList<DbTable> tables,
+        IReadOnlyCollection<string>? preSelected = null
+    )
     {
         _allSchemas.Clear();
+        var selected = preSelected is null
+            ? null
+            : new HashSet<string>(preSelected, StringComparer.OrdinalIgnoreCase);
 
         foreach (
             var group in tables
@@ -51,7 +61,10 @@ public partial class TablesPageViewModel : ViewModelBase
                         UpdateCounts();
                 };
                 schema.AllTables.Add(node);
+                if (selected is not null && selected.Contains(table.Name.ToString()))
+                    node.IsChecked = true;
             }
+            schema.Recalculate();
             _allSchemas.Add(schema);
         }
 

@@ -153,14 +153,15 @@ public partial class ConnectionPageViewModel : ViewModelBase
             history.RemoveAt(history.Count - 1);
     }
 
-    private void SaveSettings() =>
-        AppSettingsStore.Save(
-            new AppSettings
-            {
-                SourceConnectionStrings = SourceHistory.Select(e => e.ConnectionString).ToList(),
-                TargetConnectionStrings = TargetHistory.Select(e => e.ConnectionString).ToList(),
-            }
-        );
+    private void SaveSettings()
+    {
+        // Обновляем только историю подключений: остальные настройки (язык, выбранные
+        // таблицы) должны пережить сохранение, поэтому не заменяем объект целиком.
+        var settings = AppSettingsStore.Load();
+        settings.SourceConnectionStrings = SourceHistory.Select(e => e.ConnectionString).ToList();
+        settings.TargetConnectionStrings = TargetHistory.Select(e => e.ConnectionString).ToList();
+        AppSettingsStore.Save(settings);
+    }
 
     public async Task CleanupAsync()
     {

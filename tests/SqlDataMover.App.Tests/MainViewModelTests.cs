@@ -1,3 +1,4 @@
+using SqlDataMover.App.Models;
 using SqlDataMover.App.ViewModels;
 using SqlDataMover.Core.Abstractions;
 using SqlDataMover.TestHelpers;
@@ -12,6 +13,13 @@ namespace SqlDataMover.App.Tests;
 [Collection("app")]
 public class MainViewModelTests
 {
+    /// <summary>
+    /// Каждый тест стартует с чистым файлом настроек: история подключений и выбор
+    /// таблиц пишутся в общий (на коллекцию) файл, и тесты, проходящие мастер,
+    /// не должны влиять на состояние, с которым начинается следующий тест.
+    /// </summary>
+    public MainViewModelTests() => AppSettingsStore.Save(new AppSettings());
+
     private static ProviderDescriptor FakeDescriptor(string key) =>
         DbProviderFactory.SupportedProviders.First(p => p.Key == key);
 
@@ -150,5 +158,79 @@ public class MainViewModelTests
         Assert.False(vm.Connection.IsBusy);
         Assert.Contains("Connection error", vm.Connection.StatusMessage);
         Assert.False(vm.CanGoNext);
+    }
+
+    [Fact]
+    public async Task Selected_tables_are_saved_for_source_connection_string()
+    {
+        var vm = SetupWizard(
+            "fake-save",
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable()),
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable())
+        );
+
+        await vm.Connection.ConnectCommand.ExecuteAsync(null);
+        await vm.GoNextCommand.ExecuteAsync(null); // → шаг таблиц
+        foreach (var schema in vm.Tables.Schemas)
+        foreach (var table in schema.AllTables)
+            table.IsChecked = true;
+        Assert.Equal(2, vm.Tables.SelectedCount);
+
+        // Переход со шага таблиц запоминает выбор за строкой подключения источника.
+        await vm.GoNextCommand.ExecuteAsync(null); // → сопоставление
+        Assert.Equal(2, vm.CurrentStep);
+
+        var saved = AppSettingsStore.Load().SelectedTablesBySource["src"];
+        Assert.Equal(["dbo.Customers", "dbo.Orders"], saved);
+    }
+
+    [Fact]
+    public async Task Saved_tables_are_preselected_after_reconnect_to_same_source()
+    {
+        // Выбор из «прошлого запуска»: для источника "src" сохранены таблицы.
+        AppSettingsStore.Save(
+            new AppSettings { SelectedTablesBySource = new() { ["src"] = ["dbo.Customers"] } }
+        );
+
+        var vm = SetupWizard(
+            "fake-restore",
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable()),
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable())
+        );
+
+        await vm.Connection.ConnectCommand.ExecuteAsync(null);
+        await vm.GoNextCommand.ExecuteAsync(null); // → шаг таблиц
+        Assert.Equal(1, vm.CurrentStep);
+
+        var all = vm.Tables.Schemas.SelectMany(s => s.AllTables).ToList();
+        Assert.True(all.Single(t => t.Name == "Customers").IsChecked);
+        Assert.False(all.Single(t => t.Name == "Orders").IsChecked);
+        Assert.Equal(1, vm.Tables.SelectedCount);
+        // Схема частично выбрана — чекбокс в промежуточном состоянии.
+        Assert.Null(vm.Tables.Schemas.Single().IsChecked);
+
+        // Пользователь по-прежнему может поменять выбор.
+        all.Single(t => t.Name == "Orders").IsChecked = true;
+        Assert.Equal(2, vm.Tables.SelectedCount);
+        Assert.True(vm.CanGoNext);
+    }
+
+    [Fact]
+    public async Task Connect_preserves_language_and_saved_tables()
+    {
+        AppSettingsStore.Save(new AppSettings { Language = "ru" });
+
+        var vm = SetupWizard(
+            "fake-preserve",
+            new FakeProvider(WizardData.CustomerTable()),
+            new FakeProvider(WizardData.CustomerTable())
+        );
+
+        await vm.Connection.ConnectCommand.ExecuteAsync(null);
+
+        var settings = AppSettingsStore.Load();
+        Assert.Equal("ru", settings.Language);
+        Assert.Contains("src", settings.SourceConnectionStrings);
+        Assert.Contains("tgt", settings.TargetConnectionStrings);
     }
 }

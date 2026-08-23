@@ -64,7 +64,16 @@ public partial class MainViewModel : ViewModelBase
             )
                 NotifyNavigationState();
         };
-        Connection.TablesLoaded += tables => Tables.LoadTables(tables);
+        Connection.TablesLoaded += tables =>
+        {
+            // Выбор по умолчанию из прошлого запуска: таблицы, сохранённые для этого
+            // же источника. Пользователь на шаге таблиц может поменять выбор.
+            var settings = AppSettingsStore.Load();
+            var saved = settings.SelectedTablesBySource.GetValueOrDefault(
+                Connection.SourceConnectionString
+            );
+            Tables.LoadTables(tables, saved);
+        };
         Tables.PropertyChanged += (_, e) =>
         {
             if (
@@ -114,6 +123,20 @@ public partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Запоминает выбранные таблицы для текущего источника: при следующем подключении
+    /// к той же строке подключения галочки будут расставлены по умолчанию.
+    /// </summary>
+    private void SaveSelectedTables()
+    {
+        var settings = AppSettingsStore.Load();
+        settings.SelectedTablesBySource[Connection.SourceConnectionString] = Tables
+            .GetSelectedTables()
+            .Select(t => t.Table.ToString())
+            .ToList();
+        AppSettingsStore.Save(settings);
+    }
+
+    /// <summary>
     /// Уведомляет о состоянии навигации: кнопки «Далее/Назад» привязаны к
     /// <see cref="CanGoNext"/> и <see cref="CanGoBack"/>, поэтому вместе с
     /// CanExecuteChanged нужно поднимать и PropertyChanged самих свойств.
@@ -131,6 +154,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (CurrentStep == 1)
         {
+            SaveSelectedTables();
             var configs = Tables.GetSelectedTables();
             await Mapping.InitializeAsync(configs, Connection.Source!);
         }
