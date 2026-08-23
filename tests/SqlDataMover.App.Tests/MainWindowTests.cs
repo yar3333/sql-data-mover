@@ -62,7 +62,7 @@ public class MainWindowTests
         Click(window, PageButton(window, "ConnectButton"));
         await WaitUntilAsync(() => !vm.Connection.IsBusy);
         Assert.True(vm.Connection.IsReady);
-        Assert.Equal("✓ подключено", vm.Connection.SourceStatus);
+        Assert.Equal("✓ Connected", vm.Connection.SourceStatus);
         Assert.True(next.IsEnabled);
 
         // → Шаг 2: таблицы загружены.
@@ -87,7 +87,7 @@ public class MainWindowTests
         Assert.True(vm.Preview.HasPreview);
         var summary = FindVisual<TextBlock>(window, "PreviewSummaryText");
         Assert.NotNull(summary);
-        Assert.Contains("Предпросмотр завершён", summary!.Text);
+        Assert.Contains("Preview complete", summary!.Text);
 
         // «Заново» возвращает мастера в начало.
         Click(window, window.GetControl<Button>("RestartButton")!);
@@ -118,7 +118,7 @@ public class MainWindowTests
         await WaitUntilAsync(() => !vm.Connection.IsBusy);
 
         Assert.False(vm.Connection.IsReady);
-        Assert.Contains("Ошибка подключения", vm.Connection.StatusMessage);
+        Assert.Contains("Connection error", vm.Connection.StatusMessage);
         Assert.False(window.GetControl<Button>("NextButton")!.IsEnabled);
 
         window.Close();

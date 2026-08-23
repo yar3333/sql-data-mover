@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SqlDataMover.App.Localization;
 using SqlDataMover.Core.Abstractions;
 using SqlDataMover.Core.Copy;
 using SqlDataMover.Core.Models;
@@ -60,6 +61,11 @@ public partial class PreviewPageViewModel : ViewModelBase
     [ObservableProperty]
     public partial long ProcessedRows { get; set; }
 
+    /// <summary>Строка вида «Rows: N» рядом со счётчиком обработанных строк.</summary>
+    public string ProcessedRowsText => $"{AppStrings.Current.RowsWord}: {ProcessedRows:N0}";
+
+    partial void OnProcessedRowsChanged(long value) => OnPropertyChanged(nameof(ProcessedRowsText));
+
     /// <summary>Общий прогресс копирования в процентах (знаменатель — строки из предпросмотра).</summary>
     [ObservableProperty]
     public partial double ProgressPercent { get; set; }
@@ -100,7 +106,7 @@ public partial class PreviewPageViewModel : ViewModelBase
         Log.Clear();
         PreviewSummary = null;
         SummaryText = null;
-        StatusText = "Выполняется предварительный прогон (без записи)...";
+        StatusText = AppStrings.Current.DryRunStatus;
         CurrentTable = "";
         ProcessedRows = 0;
         HasPreview = false;
@@ -146,17 +152,26 @@ public partial class PreviewPageViewModel : ViewModelBase
             var totalUpdated = result.Tables.Sum(t => t.Updated);
             PreviewSummary =
                 failed == 0
-                    ? $"Предпросмотр завершён: таблиц {result.Tables.Count}, будет вставлено {totalInserted:N0}, будет обновлено {totalUpdated:N0}."
-                    : $"Предпросмотр завершён с ошибками ({failed} из {result.Tables.Count} таблиц). Будет вставлено {totalInserted:N0}, обновлено {totalUpdated:N0}. Подробности — в журнале и в столбце «Статус».";
+                    ? AppStrings.Current.FormatPreviewSummary(
+                        result.Tables.Count,
+                        totalInserted,
+                        totalUpdated
+                    )
+                    : AppStrings.Current.FormatPreviewSummaryWithErrors(
+                        failed,
+                        result.Tables.Count,
+                        totalInserted,
+                        totalUpdated
+                    );
             HasPreview = true;
         }
         catch (OperationCanceledException)
         {
-            PreviewSummary = "Предпросмотр отменён пользователем.";
+            PreviewSummary = AppStrings.Current.PreviewCancelled;
         }
         catch (Exception ex)
         {
-            PreviewSummary = $"Ошибка предпросмотра: {ex.Message}";
+            PreviewSummary = AppStrings.Current.FormatPreviewError(ex.Message);
         }
         finally
         {
@@ -224,16 +239,26 @@ public partial class PreviewPageViewModel : ViewModelBase
 
             SummaryText =
                 failed == 0
-                    ? $"Копирование завершено за {result.Elapsed.TotalSeconds:F1} с. Таблиц: {result.Tables.Count}. Вставлено строк: {totalInserted:N0}, обновлено: {totalUpdated:N0}."
-                    : $"Копирование завершено с ошибками ({failed} из {result.Tables.Count} таблиц). Вставлено строк: {totalInserted:N0}, обновлено: {totalUpdated:N0}. Подробности — в журнале.";
+                    ? AppStrings.Current.FormatCopySummary(
+                        result.Elapsed.TotalSeconds,
+                        result.Tables.Count,
+                        totalInserted,
+                        totalUpdated
+                    )
+                    : AppStrings.Current.FormatCopySummaryWithErrors(
+                        failed,
+                        result.Tables.Count,
+                        totalInserted,
+                        totalUpdated
+                    );
         }
         catch (OperationCanceledException)
         {
-            SummaryText = "Копирование отменено пользователем.";
+            SummaryText = AppStrings.Current.CopyCancelled;
         }
         catch (Exception ex)
         {
-            SummaryText = $"Ошибка копирования: {ex.Message}";
+            SummaryText = AppStrings.Current.FormatCopyError(ex.Message);
         }
         finally
         {
@@ -291,7 +316,7 @@ public partial class PreviewPageViewModel : ViewModelBase
         var currentRows = _previewRows[_currentTableIndex].Rows;
         var done = _prefixRows[_currentTableIndex] + Math.Min(progress.ProcessedRows, currentRows);
         ProgressPercent = Math.Clamp(done * 100.0 / _totalRows, 0.0, 100.0);
-        ProgressText = $"{ProgressPercent:F0}% · {done:N0} / {_totalRows:N0} строк";
+        ProgressText = AppStrings.Current.FormatProgress(ProgressPercent, done, _totalRows);
     }
 
     private int FindTableIndex(DbObjectName table)

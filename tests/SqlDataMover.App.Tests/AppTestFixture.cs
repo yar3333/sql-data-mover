@@ -1,3 +1,4 @@
+using SqlDataMover.App.Localization;
 using SqlDataMover.App.Models;
 
 namespace SqlDataMover.App.Tests;
@@ -23,6 +24,8 @@ public sealed class AppTestFixture : IDisposable
             $"{Guid.NewGuid():N}.json"
         );
         AppSettingsStore.FilePath = _tempPath;
+        // Детерминированные тесты: английский язык по умолчанию, независимо от языка ОС.
+        AppStrings.Current.Language = "en";
     }
 
     public void Dispose()

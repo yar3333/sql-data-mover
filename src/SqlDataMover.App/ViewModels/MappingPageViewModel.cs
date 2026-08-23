@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using SqlDataMover.App.Localization;
 using SqlDataMover.Core.Abstractions;
 using SqlDataMover.Core.Copy;
 using SqlDataMover.Core.Models;
@@ -70,7 +71,7 @@ public partial class MappingPageViewModel : ViewModelBase
     {
         _source = source;
         IsBusy = true;
-        StatusText = "Загрузка колонок таблиц...";
+        StatusText = AppStrings.Current.LoadingTableColumns;
 
         try
         {

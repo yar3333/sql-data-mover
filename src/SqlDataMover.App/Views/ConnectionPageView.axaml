@@ -3,6 +3,7 @@
              xmlns:vm="using:SqlDataMover.App.ViewModels"
              xmlns:core="using:SqlDataMover.Core.Abstractions"
              xmlns:models="using:SqlDataMover.App.Models"
+             xmlns:loc="using:SqlDataMover.App.Localization"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
@@ -12,14 +13,14 @@
     <ScrollViewer>
         <StackPanel Spacing="14" MaxWidth="840" HorizontalAlignment="Stretch">
             <StackPanel Spacing="4">
-                <TextBlock Text="Шаг 1. Подключение" FontSize="20" FontWeight="SemiBold"/>
-                <TextBlock Text="Укажите тип СУБД и строки подключения источника и приёмника (формат connection string C#)."
+                <TextBlock Text="{Binding Step1Title, Source={x:Static loc:AppStrings.Current}}" FontSize="20" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding Step1Subtitle, Source={x:Static loc:AppStrings.Current}}"
                            Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap"/>
             </StackPanel>
 
             <Border Classes="card">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="Тип СУБД" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding DbTypeLabel, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold"/>
                     <ComboBox x:Name="ProviderBox" ItemsSource="{Binding Providers}" SelectedItem="{Binding SelectedProvider}"
                               Width="280" HorizontalAlignment="Left">
                         <ComboBox.ItemTemplate>
@@ -34,7 +35,7 @@
             <Border Classes="card">
                 <StackPanel Spacing="14">
                     <StackPanel Spacing="6">
-                        <TextBlock Text="Источник (source)" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding SourceLabel, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold"/>
                         <ComboBox x:Name="SourceConnectionBox" ItemsSource="{Binding SourceHistory}"
                                   SelectedItem="{Binding SourceSelectedEntry}"
                                   Text="{Binding SourceConnectionString}"
@@ -52,7 +53,7 @@
                     </StackPanel>
 
                     <StackPanel Spacing="6">
-                        <TextBlock Text="Приёмник (target)" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding TargetLabel, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold"/>
                         <ComboBox x:Name="TargetConnectionBox" ItemsSource="{Binding TargetHistory}"
                                   SelectedItem="{Binding TargetSelectedEntry}"
                                   Text="{Binding TargetConnectionString}"
@@ -70,7 +71,7 @@
                     </StackPanel>
 
                     <Grid ColumnDefinitions="Auto,*">
-                        <Button x:Name="ConnectButton" Content="Подключиться" Command="{Binding ConnectCommand}" Classes="primary"
+                        <Button x:Name="ConnectButton" Content="{Binding ConnectButton, Source={x:Static loc:AppStrings.Current}}" Command="{Binding ConnectCommand}" Classes="primary"
                                 IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Left"/>
                         <ProgressBar Grid.Column="1" IsIndeterminate="{Binding IsBusy}" IsVisible="{Binding IsBusy}"
                                      Height="6" Margin="16,0,0,0" VerticalAlignment="Center"/>
@@ -81,7 +82,7 @@
             </Border>
 
             <Border Classes="card" Padding="16" Background="{DynamicResource ChipInactive}">
-                <TextBlock Text="Как это работает: таблицы копируются в порядке зависимостей по внешним ключам. Автоинкрементные ID переназначаются, соответствие старых и новых ID хранится в памяти и подставляется во внешние ключи зависимых таблиц."
+                <TextBlock Text="{Binding HowItWorks, Source={x:Static loc:AppStrings.Current}}"
                            TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" FontSize="13"/>
             </Border>
         </StackPanel>

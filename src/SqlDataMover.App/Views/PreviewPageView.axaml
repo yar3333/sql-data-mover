@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:SqlDataMover.App.ViewModels"
+             xmlns:loc="using:SqlDataMover.App.Localization"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="640"
@@ -9,33 +10,33 @@
 
     <DockPanel>
         <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,12">
-            <TextBlock Text="Шаг 4. Предпросмотр и копирование" FontSize="20" FontWeight="SemiBold"/>
-            <TextBlock Text="Предварительный прогон (без записи) показывает, сколько строк в каждой таблице будет вставлено и обновлено. Запускайте копирование после просмотра статистики."
+            <TextBlock Text="{Binding Step4Title, Source={x:Static loc:AppStrings.Current}}" FontSize="20" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding Step4Subtitle, Source={x:Static loc:AppStrings.Current}}"
                        Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap"/>
         </StackPanel>
 
         <!-- Статистика предпросмотра -->
         <Border DockPanel.Dock="Top" Classes="card" Padding="12" Margin="0,0,0,12">
             <StackPanel Spacing="10">
-                <TextBlock Text="Статистика предпросмотра" FontWeight="SemiBold" Margin="4,2,0,0"/>
+                <TextBlock Text="{Binding PreviewStats, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold" Margin="4,2,0,0"/>
 
                 <StackPanel Spacing="8" IsVisible="{Binding IsBusy}">
                     <ProgressBar IsIndeterminate="True" Height="6"/>
-                    <TextBlock Text="Выполняется предварительный прогон..." Foreground="{DynamicResource TextMutedBrush}"/>
+                    <TextBlock Text="{Binding RunningDryRun, Source={x:Static loc:AppStrings.Current}}" Foreground="{DynamicResource TextMutedBrush}"/>
                 </StackPanel>
 
                 <StackPanel Spacing="8" IsVisible="{Binding !IsBusy}">
                     <Grid RowDefinitions="Auto,*" IsVisible="{Binding HasPreview}">
                         <Grid ColumnDefinitions="*,150,150,150,*">
-                            <TextBlock Text="Таблица" FontWeight="SemiBold" Margin="4,0,0,4"
+                            <TextBlock Text="{Binding TableHeader, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold" Margin="4,0,0,4"
                                        Foreground="{DynamicResource TextMutedBrush}"/>
-                            <TextBlock Grid.Column="1" Text="Прочитано" FontWeight="SemiBold" Margin="4,0,0,4"
+                            <TextBlock Grid.Column="1" Text="{Binding ReadHeader, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold" Margin="4,0,0,4"
                                        Foreground="{DynamicResource TextMutedBrush}" TextAlignment="Right"/>
-                            <TextBlock Grid.Column="2" Text="Вставлено" FontWeight="SemiBold" Margin="4,0,0,4"
+                            <TextBlock Grid.Column="2" Text="{Binding InsertedHeader, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold" Margin="4,0,0,4"
                                        Foreground="{DynamicResource TextMutedBrush}" TextAlignment="Right"/>
-                            <TextBlock Grid.Column="3" Text="Обновлено" FontWeight="SemiBold" Margin="4,0,0,4"
+                            <TextBlock Grid.Column="3" Text="{Binding UpdatedHeader, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold" Margin="4,0,0,4"
                                        Foreground="{DynamicResource TextMutedBrush}" TextAlignment="Right"/>
-                            <TextBlock Grid.Column="4" Text="Статус" FontWeight="SemiBold" Margin="8,0,0,4"
+                            <TextBlock Grid.Column="4" Text="{Binding StatusHeader, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold" Margin="8,0,0,4"
                                        Foreground="{DynamicResource TextMutedBrush}"/>
                         </Grid>
 
@@ -65,7 +66,7 @@
                         </ScrollViewer>
                     </Grid>
 
-                    <TextBlock Text="Статистика появится после предварительного прогона."
+                    <TextBlock Text="{Binding NoStatsYet, Source={x:Static loc:AppStrings.Current}}"
                                IsVisible="{Binding !HasPreview}" Foreground="{DynamicResource TextMutedBrush}"/>
                     <TextBlock x:Name="PreviewSummaryText" Text="{Binding PreviewSummary}" FontWeight="SemiBold" TextWrapping="Wrap"
                                IsVisible="{Binding HasPreview}"/>
@@ -77,12 +78,12 @@
         <Border DockPanel.Dock="Bottom" Classes="card" Padding="12" Margin="0,12,0,0">
             <StackPanel Spacing="10">
                 <Grid ColumnDefinitions="Auto,Auto,*,Auto">
-                    <Button Content="Запустить копирование" Command="{Binding StartCopyCommand}" Classes="primary"
+                    <Button Content="{Binding StartCopy, Source={x:Static loc:AppStrings.Current}}" Command="{Binding StartCopyCommand}" Classes="primary"
                             IsEnabled="{Binding CanStartCopy}"/>
-                    <Button Grid.Column="1" Content="Отмена" Command="{Binding CancelCopyCommand}" Margin="10,0,0,0"/>
+                    <Button Grid.Column="1" Content="{Binding Cancel, Source={x:Static loc:AppStrings.Current}}" Command="{Binding CancelCopyCommand}" Margin="10,0,0,0"/>
                     <TextBlock Grid.Column="2" Text="{Binding CurrentTable}" VerticalAlignment="Center"
                                Margin="16,0,0,0" TextWrapping="Wrap"/>
-                    <TextBlock Grid.Column="3" Text="{Binding ProcessedRows, StringFormat='Строк: {0:N0}'}"
+                    <TextBlock Grid.Column="3" Text="{Binding ProcessedRowsText}"
                                VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}"/>
                 </Grid>
                 <ProgressBar Height="6" Maximum="100" Value="{Binding ProgressPercent}"
@@ -97,7 +98,7 @@
         <!-- Журнал -->
         <Border Classes="card" Padding="8">
             <DockPanel>
-                <TextBlock DockPanel.Dock="Top" Text="Журнал" FontWeight="SemiBold" Margin="8,4,8,6"/>
+                <TextBlock DockPanel.Dock="Top" Text="{Binding LogTitle, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold" Margin="8,4,8,6"/>
                 <ListBox x:Name="LogList" ItemsSource="{Binding Log}" MaxHeight="200">
                     <ListBox.ItemTemplate>
                         <DataTemplate>

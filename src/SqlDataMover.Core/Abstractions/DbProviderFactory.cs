@@ -1,3 +1,4 @@
+using SqlDataMover.Core.Localization;
 using SqlDataMover.Core.Providers;
 
 namespace SqlDataMover.Core.Abstractions;
@@ -34,7 +35,7 @@ public static class DbProviderFactory
         lock (Sync)
         {
             if (!Factories.TryGetValue(key, out var factory))
-                throw new NotSupportedException($"Неизвестный тип СУБД: {key}");
+                throw new NotSupportedException(CoreStrings.FormatUnknownProvider(key));
             return factory(connectionString);
         }
     }

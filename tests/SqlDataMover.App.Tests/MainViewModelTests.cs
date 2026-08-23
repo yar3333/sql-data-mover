@@ -57,8 +57,8 @@ public class MainViewModelTests
 
         await vm.Connection.ConnectCommand.ExecuteAsync(null);
         Assert.True(vm.Connection.IsReady);
-        Assert.Equal("✓ подключено", vm.Connection.SourceStatus);
-        Assert.Equal("✓ подключено", vm.Connection.TargetStatus);
+        Assert.Equal("✓ Connected", vm.Connection.SourceStatus);
+        Assert.Equal("✓ Connected", vm.Connection.TargetStatus);
         Assert.Equal(2, vm.Tables.TotalCount);
         Assert.True(vm.CanGoNext); // подключение есть — можно идти выбирать таблицы
 
@@ -85,7 +85,7 @@ public class MainViewModelTests
         await vm.GoNextCommand.ExecuteAsync(null);
         Assert.Equal(3, vm.CurrentStep);
         Assert.True(vm.Preview.HasPreview);
-        Assert.Contains("Предпросмотр завершён", vm.Preview.PreviewSummary);
+        Assert.Contains("Preview complete", vm.Preview.PreviewSummary);
 
         var customers = vm.Preview.Tables.Single(t => t.Table.Name == "Customers");
         Assert.Equal(2, customers.RowsRead);
@@ -128,7 +128,7 @@ public class MainViewModelTests
         var row = Assert.Single(vm.Preview.Tables);
         Assert.Equal(0, row.Inserted);
         Assert.Equal(1, row.Updated);
-        Assert.Contains("будет обновлено 1", vm.Preview.PreviewSummary);
+        Assert.Contains("rows to update: 1", vm.Preview.PreviewSummary);
     }
 
     [Fact]
@@ -148,7 +148,7 @@ public class MainViewModelTests
 
         Assert.False(vm.Connection.IsReady);
         Assert.False(vm.Connection.IsBusy);
-        Assert.Contains("Ошибка подключения", vm.Connection.StatusMessage);
+        Assert.Contains("Connection error", vm.Connection.StatusMessage);
         Assert.False(vm.CanGoNext);
     }
 }

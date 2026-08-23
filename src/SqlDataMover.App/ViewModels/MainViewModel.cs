@@ -1,5 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SqlDataMover.App.Localization;
+using SqlDataMover.App.Models;
 
 namespace SqlDataMover.App.ViewModels;
 
@@ -10,6 +12,11 @@ public partial class MainViewModel : ViewModelBase
     public TablesPageViewModel Tables { get; }
     public MappingPageViewModel Mapping { get; }
     public PreviewPageViewModel Preview { get; }
+
+    public IReadOnlyList<LanguageOption> Languages { get; } = AppStrings.Languages;
+
+    [ObservableProperty]
+    public partial LanguageOption? SelectedLanguage { get; set; }
 
     [ObservableProperty]
     public partial int CurrentStep { get; set; }
@@ -41,6 +48,8 @@ public partial class MainViewModel : ViewModelBase
 
     public MainViewModel()
     {
+        SelectedLanguage = Languages.FirstOrDefault(l => l.Code == AppStrings.Current.Language);
+
         Connection = new ConnectionPageViewModel();
         Tables = new TablesPageViewModel();
         Mapping = new MappingPageViewModel();
@@ -89,6 +98,19 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsStep2Active));
         OnPropertyChanged(nameof(IsStep3Active));
         NotifyNavigationState();
+    }
+
+    /// <summary>Смена языка в шапке: применяем ко всему приложению и запоминаем выбор.</summary>
+    partial void OnSelectedLanguageChanged(LanguageOption? value)
+    {
+        if (value is null || value.Code == AppStrings.Current.Language)
+            return;
+
+        AppStrings.Current.Language = value.Code;
+
+        var settings = AppSettingsStore.Load();
+        settings.Language = value.Code;
+        AppSettingsStore.Save(settings);
     }
 
     /// <summary>

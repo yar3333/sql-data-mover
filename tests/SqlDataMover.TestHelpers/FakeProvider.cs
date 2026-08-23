@@ -32,7 +32,7 @@ public sealed class FakeProvider : IDbProvider
 
     public Task ConnectAsync(CancellationToken ct = default) =>
         _failOnConnect
-            ? throw new InvalidOperationException("Сервер недоступен (имитация)")
+            ? throw new InvalidOperationException("Server unavailable (simulated)")
             : Task.CompletedTask;
 
     public Task<IReadOnlyList<DbTable>> GetTablesAsync(CancellationToken ct = default) =>
@@ -41,7 +41,7 @@ public sealed class FakeProvider : IDbProvider
     public Task<DbTable> GetTableDetailsAsync(DbObjectName table, CancellationToken ct = default) =>
         _tables.TryGetValue(table, out var t)
             ? Task.FromResult(t.Meta)
-            : throw new InvalidOperationException($"Таблица {table} не найдена");
+            : throw new InvalidOperationException($"Table {table} not found");
 
     public async IAsyncEnumerable<object?[]> ReadRowsAsync(
         DbObjectName table,

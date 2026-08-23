@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SqlDataMover.App.Localization;
 using SqlDataMover.App.Models;
 using SqlDataMover.Core.Abstractions;
 using SqlDataMover.Core.Models;
@@ -86,21 +87,22 @@ public partial class ConnectionPageViewModel : ViewModelBase
         IsReady = false;
         SourceStatus = null;
         TargetStatus = null;
-        StatusMessage = "Подключение к серверам...";
+        StatusMessage = AppStrings.Current.Connecting;
 
         await CleanupAsync();
 
         try
         {
             var key =
-                SelectedProvider?.Key ?? throw new InvalidOperationException("Выберите тип СУБД.");
+                SelectedProvider?.Key
+                ?? throw new InvalidOperationException(AppStrings.Current.SelectProviderError);
             Source = DbProviderFactory.Create(key, SourceConnectionString);
             Target = DbProviderFactory.Create(key, TargetConnectionString);
 
             await Source.ConnectAsync();
-            SourceStatus = "✓ подключено";
+            SourceStatus = AppStrings.Current.Connected;
             await Target.ConnectAsync();
-            TargetStatus = "✓ подключено";
+            TargetStatus = AppStrings.Current.Connected;
 
             var tables = await Source.GetTablesAsync();
             StatusMessage = null;
@@ -115,7 +117,7 @@ public partial class ConnectionPageViewModel : ViewModelBase
         {
             SourceStatus = null;
             TargetStatus = null;
-            StatusMessage = $"Ошибка подключения: {ex.Message}";
+            StatusMessage = AppStrings.Current.FormatConnectionError(ex.Message);
             await CleanupAsync();
         }
         finally

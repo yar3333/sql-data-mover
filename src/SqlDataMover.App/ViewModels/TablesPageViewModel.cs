@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using SqlDataMover.App.Localization;
 using SqlDataMover.Core.Copy;
 using SqlDataMover.Core.Models;
 
@@ -23,6 +24,12 @@ public partial class TablesPageViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
+
+    /// <summary>Строка «Selected: N» для шапки списка таблиц.</summary>
+    public string SelectedCountText => $"{AppStrings.Current.Selected}: {SelectedCount}";
+
+    /// <summary>Строка «Total: N» для шапки списка таблиц.</summary>
+    public string TotalCountText => $"{AppStrings.Current.Total}: {TotalCount}";
 
     public void LoadTables(IReadOnlyList<DbTable> tables)
     {
@@ -87,6 +94,8 @@ public partial class TablesPageViewModel : ViewModelBase
     {
         SelectedCount = _allSchemas.SelectMany(s => s.AllTables).Count(t => t.IsChecked);
         TotalCount = _allSchemas.SelectMany(s => s.AllTables).Count();
+        OnPropertyChanged(nameof(SelectedCountText));
+        OnPropertyChanged(nameof(TotalCountText));
     }
 }
 
@@ -155,7 +164,10 @@ public partial class TableNodeViewModel : ViewModelBase
 {
     public DbTable Table { get; }
     public string Name => Table.Name.Name;
-    public string Display => Table.RowCount > 0 ? $"{Name}  ({Table.RowCount:N0} строк)" : Name;
+    public string Display =>
+        Table.RowCount > 0
+            ? $"{Name}  ({AppStrings.Current.FormatRowCount(Table.RowCount)})"
+            : Name;
     public SchemaNodeViewModel? Parent { get; set; }
 
     [ObservableProperty]

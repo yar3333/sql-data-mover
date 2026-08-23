@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:SqlDataMover.App.ViewModels"
+             xmlns:loc="using:SqlDataMover.App.Localization"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
@@ -9,15 +10,15 @@
 
     <DockPanel>
         <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,12">
-            <TextBlock Text="Шаг 3. Поля сопоставления" FontSize="20" FontWeight="SemiBold"/>
-            <TextBlock Text="Для каждой таблицы отметьте одно или несколько полей: комбинация их значений сопоставляет строки источника с уже существующими строками приёмника. Совпавшие строки обновляются, отсутствующие — вставляются."
+            <TextBlock Text="{Binding Step3Title, Source={x:Static loc:AppStrings.Current}}" FontSize="20" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding Step3Subtitle, Source={x:Static loc:AppStrings.Current}}"
                        Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap"/>
         </StackPanel>
 
         <Border Classes="card" Padding="8" IsEnabled="{Binding !IsBusy}">
             <Grid>
                 <StackPanel Spacing="8" IsVisible="{Binding !IsBusy}">
-                    <TextBlock Text="Таблицы для копирования" FontWeight="SemiBold" Margin="8,4,0,0"/>
+                    <TextBlock Text="{Binding TablesToCopy, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold" Margin="8,4,0,0"/>
                     <ScrollViewer MaxHeight="520">
                         <ItemsControl ItemsSource="{Binding Tables}">
                             <ItemsControl.ItemTemplate>
@@ -42,12 +43,12 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </ScrollViewer>
-                    <TextBlock Text="Выберите хотя бы одно поле для каждой таблицы, чтобы перейти к предпросмотру."
+                    <TextBlock Text="{Binding SelectAtLeastOne, Source={x:Static loc:AppStrings.Current}}"
                                Foreground="{DynamicResource TextMutedBrush}" Margin="8,2,0,0"
                                IsVisible="{Binding !AllHaveMatchColumns}"/>
                 </StackPanel>
                 <StackPanel Spacing="8" IsVisible="{Binding IsBusy}">
-                    <TextBlock Text="Загрузка колонок..." Foreground="{DynamicResource TextMutedBrush}"/>
+                    <TextBlock Text="{Binding LoadingColumns, Source={x:Static loc:AppStrings.Current}}" Foreground="{DynamicResource TextMutedBrush}"/>
                     <ProgressBar IsIndeterminate="True" Height="6"/>
                 </StackPanel>
             </Grid>

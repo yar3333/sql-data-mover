@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using SqlDataMover.Core.Abstractions;
+using SqlDataMover.Core.Localization;
 using SqlDataMover.Core.Models;
 
 namespace SqlDataMover.Core.Copy;
@@ -50,7 +51,7 @@ public sealed class DataCopyEngine
                 new DbObjectName(string.Empty, string.Empty),
                 CopyStage.Preparing,
                 0,
-                "Загрузка метаданных таблиц..."
+                CoreStrings.LoadingMetadata
             )
         );
 
@@ -81,8 +82,8 @@ public sealed class DataCopyEngine
                         CopyStage.Preparing,
                         0,
                         dryRun
-                            ? $"Предпросмотр таблицы {table}..."
-                            : $"Копирование таблицы {table}..."
+                            ? CoreStrings.FormatPreviewTable(table.ToString())
+                            : CoreStrings.FormatCopyingTable(table.ToString())
                     )
                 );
 
@@ -108,20 +109,29 @@ public sealed class DataCopyEngine
                         CopyStage.Completed,
                         result.RowsRead,
                         dryRun
-                            ? $"Предпросмотр: строк {result.RowsRead:N0}, будет вставлено {result.Inserted:N0}, будет обновлено {result.Updated:N0}"
-                            : $"Готово: строк {result.RowsRead:N0}, вставлено {result.Inserted:N0}, обновлено {result.Updated:N0}, сопоставлено ID {result.Mapped:N0}"
+                            ? CoreStrings.FormatPreviewSummary(
+                                result.RowsRead,
+                                result.Inserted,
+                                result.Updated
+                            )
+                            : CoreStrings.FormatTableSummary(
+                                result.RowsRead,
+                                result.Inserted,
+                                result.Updated,
+                                result.Mapped
+                            )
                     )
                 );
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                result.Error = "Отменено пользователем";
+                result.Error = CoreStrings.CancelledByUser;
                 Report(
                     new CopyProgress(
                         table,
                         CopyStage.Failed,
                         result.RowsRead,
-                        $"Таблица {table}: копирование отменено",
+                        CoreStrings.FormatTableCancelled(table.ToString()),
                         IsError: true
                     )
                 );
@@ -135,7 +145,7 @@ public sealed class DataCopyEngine
                         table,
                         CopyStage.Failed,
                         result.RowsRead,
-                        $"Таблица {table}: ошибка — {ex.Message}",
+                        CoreStrings.FormatTableError(table.ToString(), ex.Message),
                         IsError: true
                     )
                 );
@@ -162,7 +172,7 @@ public sealed class DataCopyEngine
         var dryRun = _settings.DryRun;
 
         if (cfg.MatchColumns.Count == 0)
-            throw new InvalidOperationException("Не указаны поля сопоставления для таблицы.");
+            throw new InvalidOperationException(CoreStrings.NoMatchColumns);
 
         foreach (var column in cfg.MatchColumns)
         {
@@ -178,9 +188,7 @@ public sealed class DataCopyEngine
             .ToList();
 
         if (insertColumns.Count == 0)
-            throw new InvalidOperationException(
-                "Нет общих колонок для копирования (все колонки вычисляемые или identity приёмника)."
-            );
+            throw new InvalidOperationException(CoreStrings.NoCommonColumns);
 
         // Оригинальное identity-значение читаем тоже — оно нужно для сопоставления ID, но в INSERT не попадает.
         var readColumns = insertColumns.ToList();
@@ -203,7 +211,7 @@ public sealed class DataCopyEngine
         var matchIndices = cfg.MatchColumns.Select(c => IndexOf(readColumns, c)).ToArray();
         if (matchIndices.Any(i => i < 0))
             throw new InvalidOperationException(
-                $"Одно из полей сопоставления «{string.Join("», «", cfg.MatchColumns)}» не найдено среди копируемых колонок."
+                CoreStrings.FormatMatchColumnNotInCopySet(cfg.MatchColumns)
             );
 
         // Обновляются все колонки, кроме полей сопоставления, первичного ключа и identity.
@@ -221,7 +229,7 @@ public sealed class DataCopyEngine
         var mappedIndex = mappedColumnIsIdentity ? -1 : IndexOf(readColumns, mappedColumn);
         if (mappedIndex < 0 && !mappedColumnIsIdentity)
             throw new InvalidOperationException(
-                $"Не удалось определить колонку для сопоставления ID: «{mappedColumn}»."
+                CoreStrings.FormatMappingColumnNotFound(mappedColumn)
             );
 
         // Колонки этой таблицы, на которые ссылаются внешние ключи других выбранных таблиц.
@@ -270,7 +278,7 @@ public sealed class DataCopyEngine
                 src.Name,
                 CopyStage.LoadingTargetMap,
                 0,
-                $"Загрузка соответствий по полям «{string.Join("», «", cfg.MatchColumns)}»..."
+                CoreStrings.FormatLoadingMatchMap(cfg.MatchColumns)
             )
         );
 
@@ -319,7 +327,7 @@ public sealed class DataCopyEngine
                         : pending.Values[mappedIndex];
                     if (newMappedId is null)
                         throw new InvalidOperationException(
-                            $"Не получено новое значение ID при вставке в таблицу {src.Name}."
+                            CoreStrings.FormatNoNewId(src.Name.ToString())
                         );
 
                     RecordMappings(
@@ -351,7 +359,7 @@ public sealed class DataCopyEngine
                 var newMappedId = mappedColumnIsIdentity ? newIds[i] : pending.Values[mappedIndex];
                 if (newMappedId is null)
                     throw new InvalidOperationException(
-                        $"Не получено новое значение ID при вставке в таблицу {src.Name}."
+                        CoreStrings.FormatNoNewId(src.Name.ToString())
                     );
 
                 RecordMappings(
@@ -394,7 +402,7 @@ public sealed class DataCopyEngine
                 var key = new CompositeKey(matchIndices.Select(idx => pending.Values[idx]));
                 if (!matchMap.TryGetValue(key, out var newMappedId))
                     throw new InvalidOperationException(
-                        $"Не удалось определить целевой ID для строки с полями «{string.Join("», «", cfg.MatchColumns)}» = «{key}»."
+                        CoreStrings.FormatTargetIdNotFound(cfg.MatchColumns, key.ToString())
                     );
 
                 RecordMappings(
@@ -431,7 +439,13 @@ public sealed class DataCopyEngine
 
                 if (!_mappings.TryGet(parentTable, parentColumn, value, out var mapped))
                     throw new InvalidOperationException(
-                        $"Нет сопоставления ID для внешнего ключа ({src.Name}.{readColumns[columnIndex]} → {parentTable}.{parentColumn}) со значением «{value}». Проверьте, что родительская таблица выбрана для копирования."
+                        CoreStrings.FormatNoIdMapping(
+                            src.Name.ToString(),
+                            readColumns[columnIndex],
+                            parentTable.ToString(),
+                            parentColumn,
+                            value.ToString() ?? ""
+                        )
                     );
 
                 raw[columnIndex] = mapped;
@@ -472,7 +486,7 @@ public sealed class DataCopyEngine
                         src.Name,
                         CopyStage.Copying,
                         rowsRead,
-                        $"Обработано строк: {rowsRead:N0}"
+                        CoreStrings.FormatRowsProcessed(rowsRead)
                     )
                 );
                 lastReport = rowsRead;
@@ -557,7 +571,7 @@ public sealed class DataCopyEngine
     {
         if (table.GetColumn(column) is null)
             throw new InvalidOperationException(
-                $"Колонка «{column}» не найдена в таблице {table.Name}."
+                CoreStrings.FormatColumnNotFound(column, table.Name.ToString())
             );
     }
 

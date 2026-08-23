@@ -1,4 +1,5 @@
 using SqlDataMover.Core.Copy;
+using SqlDataMover.Core.Localization;
 using SqlDataMover.Core.Models;
 using SqlDataMover.TestHelpers;
 
@@ -247,7 +248,7 @@ public class DataCopyEngineTests
 
         var ordersResult = result.Tables.Single(t => t.Table == Orders);
         Assert.False(ordersResult.Success);
-        Assert.Contains("Нет сопоставления ID", ordersResult.Error);
+        Assert.Contains("No ID mapping", ordersResult.Error);
         Assert.Empty(target.GetTable(Orders).Rows); // транзакция откачена
     }
 
@@ -539,7 +540,7 @@ public class DataCopyEngineTests
 
         var customersResult = result.Tables.Single(t => t.Table == Customers);
         Assert.False(customersResult.Success);
-        Assert.Contains("Не указаны поля сопоставления", customersResult.Error);
+        Assert.Contains("No match columns specified", customersResult.Error);
         Assert.Empty(target.GetTable(Customers).Rows);
     }
 
@@ -554,7 +555,7 @@ public class DataCopyEngineTests
 
         var customersResult = result.Tables.Single(t => t.Table == Customers);
         Assert.False(customersResult.Success);
-        Assert.Contains("«Nope» не найдена", customersResult.Error);
+        Assert.Contains("\"Nope\" not found", customersResult.Error);
         Assert.Empty(target.GetTable(Customers).Rows);
     }
 
@@ -593,7 +594,7 @@ public class DataCopyEngineTests
 
         var customersResult = result.Tables.Single(t => t.Table == Customers);
         Assert.False(customersResult.Success);
-        Assert.Contains("не найдено среди копируемых колонок", customersResult.Error);
+        Assert.Contains("not among the columns being copied", customersResult.Error);
         Assert.Empty(target.GetTable(Customers).Rows);
     }
 
@@ -769,7 +770,36 @@ public class DataCopyEngineTests
 
         var ordersResult = result.Tables.Single(t => t.Table == Orders);
         Assert.False(ordersResult.Success);
-        Assert.Contains("Нет сопоставления ID", ordersResult.Error);
+        Assert.Contains("No ID mapping", ordersResult.Error);
         Assert.Empty(target.GetTable(Orders).Rows);
+    }
+
+    [Fact]
+    public async Task Engine_errors_are_localized_when_russian_language_is_selected()
+    {
+        CoreStrings.Language = "ru";
+        try
+        {
+            // Child ссылается на выбранного родителя, но данных родителя в источнике нет → нет сопоставления.
+            var source = new FakeProvider(
+                CustomerTable([]),
+                OrderTable([new object?[] { 1, 999 }])
+            );
+            var target = new FakeProvider(CustomerTable([]), OrderTable([]));
+
+            var engine = new DataCopyEngine(source, target);
+            var result = await engine.CopyAsync(
+                [Config(Customers, "Id"), Config(Orders, "Id")],
+                CancellationToken.None
+            );
+
+            var ordersResult = result.Tables.Single(t => t.Table == Orders);
+            Assert.False(ordersResult.Success);
+            Assert.Contains("Нет сопоставления ID", ordersResult.Error);
+        }
+        finally
+        {
+            CoreStrings.Language = "en";
+        }
     }
 }

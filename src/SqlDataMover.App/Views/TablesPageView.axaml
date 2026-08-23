@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:SqlDataMover.App.ViewModels"
+             xmlns:loc="using:SqlDataMover.App.Localization"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
@@ -9,17 +10,17 @@
 
     <DockPanel>
         <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,12">
-            <TextBlock Text="Шаг 2. Выбор таблиц" FontSize="20" FontWeight="SemiBold"/>
-            <TextBlock Text="Отметьте таблицы для копирования: схема → таблицы."
+            <TextBlock Text="{Binding Step2Title, Source={x:Static loc:AppStrings.Current}}" FontSize="20" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding Step2Subtitle, Source={x:Static loc:AppStrings.Current}}"
                        Foreground="{DynamicResource TextMutedBrush}"/>
         </StackPanel>
 
         <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
-            <TextBox Text="{Binding FilterText}" PlaceholderText="Фильтр по имени таблицы или схемы..."
+            <TextBox Text="{Binding FilterText}" PlaceholderText="{Binding FilterPlaceholder, Source={x:Static loc:AppStrings.Current}}"
                      Width="320" HorizontalAlignment="Left"/>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="18" VerticalAlignment="Center">
-                <TextBlock Text="{Binding SelectedCount, StringFormat='Выбрано: {0}'}" FontWeight="SemiBold"/>
-                <TextBlock Text="{Binding TotalCount, StringFormat='Всего: {0}'}"
+                <TextBlock Text="{Binding SelectedCountText}" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding TotalCountText}"
                            Foreground="{DynamicResource TextMutedBrush}"/>
             </StackPanel>
         </Grid>

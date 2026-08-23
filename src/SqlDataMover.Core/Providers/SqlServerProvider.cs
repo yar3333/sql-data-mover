@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Data.SqlClient;
 using SqlDataMover.Core.Abstractions;
+using SqlDataMover.Core.Localization;
 using SqlDataMover.Core.Models;
 
 namespace SqlDataMover.Core.Providers;
@@ -135,7 +136,7 @@ public sealed class SqlServerProvider : IDbProvider
         }
 
         if (columns.Count == 0)
-            throw new InvalidOperationException($"Таблица {table} не найдена в базе данных.");
+            throw new InvalidOperationException(CoreStrings.FormatTableNotFound(table.ToString()));
 
         var foreignKeys = await LoadForeignKeysAsync(table, ct);
 
@@ -365,13 +366,11 @@ public sealed class SqlServerProvider : IDbProvider
 
         var matchIndices = matchColumns.Select(c => IndexOf(allColumns, c)).ToArray();
         if (matchIndices.Any(i => i < 0))
-            throw new InvalidOperationException(
-                "Одно из полей сопоставления не найдено среди копируемых колонок."
-            );
+            throw new InvalidOperationException(CoreStrings.MatchColumnMissing);
 
         var updateIndices = updateColumns.Select(c => IndexOf(allColumns, c)).ToArray();
         if (updateIndices.Any(i => i < 0))
-            throw new InvalidOperationException("Одна из колонок обновления не найдена.");
+            throw new InvalidOperationException(CoreStrings.UpdateColumnMissing);
 
         var sql = new StringBuilder();
         await using var cmd = new SqlCommand

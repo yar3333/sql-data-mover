@@ -1,3 +1,4 @@
+using SqlDataMover.Core.Localization;
 using SqlDataMover.Core.Models;
 
 namespace SqlDataMover.Core.Copy;
@@ -35,9 +36,11 @@ public static class TableDependencySorter
         }
 
         var queue = new Queue<DbObjectName>(
-            tables.Where(t => indegree[t.Name] == 0)
-                  .Select(t => t.Name)
-                  .OrderBy(n => n.ToString(), StringComparer.OrdinalIgnoreCase));
+            tables
+                .Where(t => indegree[t.Name] == 0)
+                .Select(t => t.Name)
+                .OrderBy(n => n.ToString(), StringComparer.OrdinalIgnoreCase)
+        );
 
         var order = new List<DbObjectName>(tables.Count);
 
@@ -57,7 +60,7 @@ public static class TableDependencySorter
         if (order.Count != selected.Count)
         {
             var cycle = string.Join(", ", selected.Except(order).Select(n => n.ToString()));
-            throw new InvalidOperationException($"Обнаружена циклическая зависимость между таблицами: {cycle}");
+            throw new InvalidOperationException(CoreStrings.FormatCycleDetected(cycle));
         }
 
         return order;

@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:SqlDataMover.App.ViewModels"
+        xmlns:loc="using:SqlDataMover.App.Localization"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="760"
@@ -27,7 +28,7 @@
                     </Border>
                     <StackPanel VerticalAlignment="Center" Spacing="1">
                         <TextBlock Text="SQL Data Mover" FontSize="19" FontWeight="Bold"/>
-                        <TextBlock Text="Копирование данных между серверами" FontSize="12"
+                        <TextBlock Text="{Binding Subtitle, Source={x:Static loc:AppStrings.Current}}" FontSize="12"
                                    Foreground="{DynamicResource TextMutedBrush}"/>
                     </StackPanel>
                 </StackPanel>
@@ -37,7 +38,7 @@
                         <Border Classes="step-circle" Classes.active="{Binding IsStep0Active}">
                             <TextBlock Text="1" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"/>
                         </Border>
-                        <TextBlock Text="Подключение" VerticalAlignment="Center" Classes="step-label"
+                        <TextBlock Text="{Binding Step1Label, Source={x:Static loc:AppStrings.Current}}" VerticalAlignment="Center" Classes="step-label"
                                    Classes.active="{Binding IsStep0Active}"/>
                     </StackPanel>
                     <TextBlock Text="→" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}"/>
@@ -45,7 +46,7 @@
                         <Border Classes="step-circle" Classes.active="{Binding IsStep1Active}">
                             <TextBlock Text="2" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"/>
                         </Border>
-                        <TextBlock Text="Выбор таблиц" VerticalAlignment="Center" Classes="step-label"
+                        <TextBlock Text="{Binding Step2Label, Source={x:Static loc:AppStrings.Current}}" VerticalAlignment="Center" Classes="step-label"
                                    Classes.active="{Binding IsStep1Active}"/>
                     </StackPanel>
                     <TextBlock Text="→" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}"/>
@@ -53,7 +54,7 @@
                         <Border Classes="step-circle" Classes.active="{Binding IsStep2Active}">
                             <TextBlock Text="3" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"/>
                         </Border>
-                        <TextBlock Text="Сопоставление" VerticalAlignment="Center" Classes="step-label"
+                        <TextBlock Text="{Binding Step3Label, Source={x:Static loc:AppStrings.Current}}" VerticalAlignment="Center" Classes="step-label"
                                    Classes.active="{Binding IsStep2Active}"/>
                     </StackPanel>
                     <TextBlock Text="→" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}"/>
@@ -61,9 +62,18 @@
                         <Border Classes="step-circle" Classes.active="{Binding IsStep3Active}">
                             <TextBlock Text="4" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"/>
                         </Border>
-                        <TextBlock Text="Предпросмотр" VerticalAlignment="Center" Classes="step-label"
+                        <TextBlock Text="{Binding Step4Label, Source={x:Static loc:AppStrings.Current}}" VerticalAlignment="Center" Classes="step-label"
                                    Classes.active="{Binding IsStep3Active}"/>
                     </StackPanel>
+
+                    <ComboBox x:Name="LanguageBox" ItemsSource="{Binding Languages}"
+                              SelectedItem="{Binding SelectedLanguage}" Width="110" VerticalAlignment="Center">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate DataType="loc:LanguageOption">
+                                <TextBlock Text="{Binding DisplayName}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
                 </StackPanel>
             </Grid>
         </Border>
@@ -71,10 +81,10 @@
         <!-- Подвал: докируется вниз до контента. -->
         <Border DockPanel.Dock="Bottom" Padding="24,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource CardBorder}">
             <Grid ColumnDefinitions="Auto,*,Auto">
-                <Button x:Name="RestartButton" Content="Заново" Command="{Binding RestartCommand}" Padding="18,7"/>
+                <Button x:Name="RestartButton" Content="{Binding Restart, Source={x:Static loc:AppStrings.Current}}" Command="{Binding RestartCommand}" Padding="18,7"/>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
-                    <Button x:Name="BackButton" Content="← Назад" Command="{Binding GoBackCommand}" Padding="20,7" IsEnabled="{Binding CanGoBack}"/>
-                    <Button x:Name="NextButton" Content="Далее →" Command="{Binding GoNextCommand}" Classes="primary" Padding="24,7" IsEnabled="{Binding CanGoNext}"/>
+                    <Button x:Name="BackButton" Content="{Binding Back, Source={x:Static loc:AppStrings.Current}}" Command="{Binding GoBackCommand}" Padding="20,7" IsEnabled="{Binding CanGoBack}"/>
+                    <Button x:Name="NextButton" Content="{Binding Next, Source={x:Static loc:AppStrings.Current}}" Command="{Binding GoNextCommand}" Classes="primary" Padding="24,7" IsEnabled="{Binding CanGoNext}"/>
                 </StackPanel>
             </Grid>
         </Border>
