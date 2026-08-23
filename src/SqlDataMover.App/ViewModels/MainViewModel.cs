@@ -137,6 +137,31 @@ public partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Запоминает поля сопоставления выбранных таблиц для текущего источника. Поля таблиц,
+    /// не попавших в текущий прогон, сохраняются: если пользователь выберет их позже,
+    /// конфигурация не потеряется.
+    /// </summary>
+    private void SaveMatchColumns()
+    {
+        var settings = AppSettingsStore.Load();
+        if (
+            !settings.MatchColumnsBySource.TryGetValue(
+                Connection.SourceConnectionString,
+                out var byTable
+            )
+        )
+        {
+            byTable = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            settings.MatchColumnsBySource[Connection.SourceConnectionString] = byTable;
+        }
+
+        foreach (var cfg in Mapping.GetConfigs())
+            byTable[cfg.Table.ToString()] = cfg.MatchColumns.ToList();
+
+        AppSettingsStore.Save(settings);
+    }
+
+    /// <summary>
     /// Уведомляет о состоянии навигации: кнопки «Далее/Назад» привязаны к
     /// <see cref="CanGoNext"/> и <see cref="CanGoBack"/>, поэтому вместе с
     /// CanExecuteChanged нужно поднимать и PropertyChanged самих свойств.
@@ -156,10 +181,14 @@ public partial class MainViewModel : ViewModelBase
         {
             SaveSelectedTables();
             var configs = Tables.GetSelectedTables();
-            await Mapping.InitializeAsync(configs, Connection.Source!);
+            var savedColumns = AppSettingsStore
+                .Load()
+                .MatchColumnsBySource.GetValueOrDefault(Connection.SourceConnectionString);
+            await Mapping.InitializeAsync(configs, Connection.Source!, savedColumns);
         }
         else if (CurrentStep == 2)
         {
+            SaveMatchColumns();
             // Переходим на шаг предпросмотра сразу, чтобы показать индикатор выполнения dry run.
             CurrentStep++;
             var configs = Mapping.GetConfigs();

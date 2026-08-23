@@ -20,4 +20,12 @@ public sealed class AppSettings
     /// Используется как выбор по умолчанию при повторном подключении к тому же источнику.
     /// </summary>
     public Dictionary<string, List<string>> SelectedTablesBySource { get; set; } = [];
+
+    /// <summary>
+    /// Поля сопоставления (поля-ключи) по таблицам источника: ключ — точная строка
+    /// подключения источника, затем имя таблицы ("schema.table") → список имён колонок.
+    /// Восстанавливаются на шаге сопоставления при повторном подключении к тому же источнику.
+    /// </summary>
+    public Dictionary<string, Dictionary<string, List<string>>> MatchColumnsBySource { get; set; } =
+    [];
 }

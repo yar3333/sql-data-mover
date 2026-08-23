@@ -67,7 +67,16 @@ public partial class MappingPageViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool AllHaveMatchColumns { get; set; }
 
-    public async Task InitializeAsync(IReadOnlyList<TableCopyConfig> configs, IDbProvider source)
+    /// <summary>
+    /// Загружает колонки выбранных таблиц и поля сопоставления. Если для таблицы
+    /// сохранены поля с прошлого запуска (<paramref name="savedColumns"/>) и хотя бы одно
+    /// из них существует в таблице — выбираются они, иначе дефолты (PK, затем первая колонка).
+    /// </summary>
+    public async Task InitializeAsync(
+        IReadOnlyList<TableCopyConfig> configs,
+        IDbProvider source,
+        IReadOnlyDictionary<string, List<string>>? savedColumns = null
+    )
     {
         _source = source;
         IsBusy = true;
@@ -90,7 +99,15 @@ public partial class MappingPageViewModel : ViewModelBase
                     details.PrimaryKeyColumns.Count > 0
                         ? details.PrimaryKeyColumns
                         : columns.Take(1).ToList();
-                var vm = new TableMappingViewModel(cfg.Table, columns, defaults);
+                var selected = defaults;
+                if (
+                    savedColumns is not null
+                    && savedColumns.TryGetValue(cfg.Table.ToString(), out var saved)
+                    && saved.Intersect(columns, StringComparer.OrdinalIgnoreCase).Any()
+                )
+                    selected = saved;
+
+                var vm = new TableMappingViewModel(cfg.Table, columns, selected);
                 foreach (var column in vm.Columns)
                     column.PropertyChanged += OnColumnPropertyChanged;
                 Tables.Add(vm);

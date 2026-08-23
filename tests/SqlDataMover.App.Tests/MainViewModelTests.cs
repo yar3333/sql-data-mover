@@ -233,4 +233,121 @@ public class MainViewModelTests
         Assert.Contains("src", settings.SourceConnectionStrings);
         Assert.Contains("tgt", settings.TargetConnectionStrings);
     }
+
+    [Fact]
+    public async Task Match_columns_are_saved_when_leaving_mapping_step()
+    {
+        var vm = SetupWizard(
+            "fake-map-save",
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable()),
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable())
+        );
+
+        await vm.Connection.ConnectCommand.ExecuteAsync(null);
+        await vm.GoNextCommand.ExecuteAsync(null); // → шаг таблиц
+        foreach (var schema in vm.Tables.Schemas)
+        foreach (var table in schema.AllTables)
+            table.IsChecked = true;
+        await vm.GoNextCommand.ExecuteAsync(null); // → сопоставление
+        Assert.Equal(2, vm.CurrentStep);
+
+        // Меняем поля сопоставления Customers: вместо PK (Id) — Name.
+        var customers = vm.Mapping.Tables.Single(t => t.Table.Name == "Customers");
+        customers.Columns.Single(c => c.Name == "Id").IsSelected = false;
+        customers.Columns.Single(c => c.Name == "Name").IsSelected = true;
+
+        // Уход со шага сопоставления запоминает поля за источником и таблицей.
+        await vm.GoNextCommand.ExecuteAsync(null); // → предпросмотр
+        Assert.Equal(3, vm.CurrentStep);
+
+        var saved = AppSettingsStore.Load().MatchColumnsBySource["src"];
+        Assert.Equal(["Name"], saved["dbo.Customers"]);
+        Assert.Equal(["Id"], saved["dbo.Orders"]); // дефолт Orders не менялся
+    }
+
+    [Fact]
+    public async Task Saved_match_columns_are_restored_after_reconnect()
+    {
+        AppSettingsStore.Save(
+            new AppSettings
+            {
+                MatchColumnsBySource = new() { ["src"] = new() { ["dbo.Customers"] = ["Name"] } },
+            }
+        );
+
+        var vm = SetupWizard(
+            "fake-map-restore",
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable()),
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable())
+        );
+
+        await vm.Connection.ConnectCommand.ExecuteAsync(null);
+        await vm.GoNextCommand.ExecuteAsync(null); // → шаг таблиц
+        vm.Tables.Schemas[0].AllTables[0].IsChecked = true; // Customers
+        await vm.GoNextCommand.ExecuteAsync(null); // → сопоставление
+
+        var customers = vm.Mapping.Tables.Single(t => t.Table.Name == "Customers");
+        Assert.Equal(["Name"], customers.GetMatchColumns());
+    }
+
+    [Fact]
+    public async Task Stale_saved_match_columns_fall_back_to_defaults()
+    {
+        // Колонки из сохранённой конфигурации больше нет в таблице (схема изменилась).
+        AppSettingsStore.Save(
+            new AppSettings
+            {
+                MatchColumnsBySource = new()
+                {
+                    ["src"] = new() { ["dbo.Customers"] = ["MissingCol"] },
+                },
+            }
+        );
+
+        var vm = SetupWizard(
+            "fake-map-fallback",
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable()),
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable())
+        );
+
+        await vm.Connection.ConnectCommand.ExecuteAsync(null);
+        await vm.GoNextCommand.ExecuteAsync(null); // → шаг таблиц
+        vm.Tables.Schemas[0].AllTables[0].IsChecked = true; // Customers
+        await vm.GoNextCommand.ExecuteAsync(null); // → сопоставление
+
+        var customers = vm.Mapping.Tables.Single(t => t.Table.Name == "Customers");
+        Assert.Equal(["Id"], customers.GetMatchColumns()); // фолбэк на PK
+    }
+
+    [Fact]
+    public async Task Saving_match_columns_keeps_config_of_unselected_tables()
+    {
+        // В прошлый раз для Orders были настроены поля — таблица не выбрана сейчас,
+        // но конфигурация не должна потеряться.
+        AppSettingsStore.Save(
+            new AppSettings
+            {
+                MatchColumnsBySource = new()
+                {
+                    ["src"] = new() { ["dbo.Orders"] = ["CustomerId"] },
+                },
+            }
+        );
+
+        var vm = SetupWizard(
+            "fake-map-merge",
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable()),
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable())
+        );
+
+        await vm.Connection.ConnectCommand.ExecuteAsync(null);
+        await vm.GoNextCommand.ExecuteAsync(null); // → шаг таблиц
+        vm.Tables.Schemas[0].AllTables[0].IsChecked = true; // только Customers
+        await vm.GoNextCommand.ExecuteAsync(null); // → сопоставление
+        await vm.GoNextCommand.ExecuteAsync(null); // → предпросмотр
+
+        var saved = AppSettingsStore.Load().MatchColumnsBySource["src"];
+        Assert.Equal(["Id"], saved["dbo.Customers"]);
+        Assert.Equal(["CustomerId"], saved["dbo.Orders"]);
+    }
 }
