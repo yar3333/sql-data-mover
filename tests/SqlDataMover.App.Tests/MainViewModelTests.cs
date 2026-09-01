@@ -1,6 +1,8 @@
+using SqlDataMover.App.Localization;
 using SqlDataMover.App.Models;
 using SqlDataMover.App.ViewModels;
 using SqlDataMover.Core.Abstractions;
+using SqlDataMover.Core.Models;
 using SqlDataMover.TestHelpers;
 
 namespace SqlDataMover.App.Tests;
@@ -28,11 +30,11 @@ public class MainViewModelTests
     /// источник, всё остальное — приёмник. Каждый тест использует свой уникальный ключ,
     /// чтобы реестр глобальной фабрики не конфликтовал между тестами.
     /// </summary>
-    private static void RegisterFake(string key, FakeProvider source, FakeProvider target) =>
+    private static void RegisterFake(string key, IDbProvider source, IDbProvider target) =>
         DbProviderFactory.Register(key, "Fake", cs => cs == "src" ? source : target);
 
     /// <summary>Мастер с fake-СУБД: регистрация провайдера и заполнение формы подключения.</summary>
-    private static MainViewModel SetupWizard(string key, FakeProvider source, FakeProvider target)
+    private static MainViewModel SetupWizard(string key, IDbProvider source, IDbProvider target)
     {
         RegisterFake(key, source, target);
 
@@ -350,4 +352,295 @@ public class MainViewModelTests
         Assert.Equal(["Id"], saved["dbo.Customers"]);
         Assert.Equal(["CustomerId"], saved["dbo.Orders"]);
     }
+
+    [Fact]
+    public async Task Back_and_restart_are_disabled_while_mapping_columns_load()
+    {
+        var source = new GatedProvider(
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable())
+        );
+        source.GateDetails();
+        var vm = SetupWizard(
+            "fake-back-load",
+            source,
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable())
+        );
+
+        await vm.Connection.ConnectCommand.ExecuteAsync(null);
+        await vm.GoNextCommand.ExecuteAsync(null); // → шаг таблиц
+        foreach (var schema in vm.Tables.Schemas)
+        foreach (var table in schema.AllTables)
+            table.IsChecked = true;
+
+        // «Далее» ушёл в фоновую загрузку колонок: назад и «Заново» блокируются.
+        var nextTask = vm.GoNextCommand.ExecuteAsync(null);
+        await Task.Yield();
+        Assert.True(vm.Mapping.IsBusy);
+        Assert.False(vm.CanGoNext);
+        Assert.False(vm.CanGoBack);
+        Assert.False(vm.CanRestart);
+
+        source.OpenGates();
+        await nextTask;
+        Assert.Equal(2, vm.CurrentStep);
+        Assert.False(vm.Mapping.IsBusy);
+        Assert.True(vm.CanGoBack);
+        Assert.True(vm.CanRestart);
+    }
+
+    [Fact]
+    public async Task Back_during_mapping_load_does_not_jump_forward_again()
+    {
+        var source = new GatedProvider(
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable())
+        );
+        source.GateDetails();
+        var vm = SetupWizard(
+            "fake-back-race",
+            source,
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable())
+        );
+
+        await vm.Connection.ConnectCommand.ExecuteAsync(null);
+        await vm.GoNextCommand.ExecuteAsync(null); // → шаг таблиц
+        foreach (var schema in vm.Tables.Schemas)
+        foreach (var table in schema.AllTables)
+            table.IsChecked = true;
+
+        var nextTask = vm.GoNextCommand.ExecuteAsync(null);
+        await Task.Yield();
+        Assert.True(vm.Mapping.IsBusy);
+
+        // Пока колонки грузятся, пользователь уходит на шаг подключения.
+        vm.CurrentStep = 0;
+
+        source.OpenGates();
+        await nextTask;
+
+        // Завершившаяся загрузка не должна перекинуть пользователя вперёд.
+        Assert.Equal(0, vm.CurrentStep);
+    }
+
+    [Fact]
+    public async Task Back_and_restart_are_disabled_during_real_copy()
+    {
+        var target = new GatedProvider(new FakeProvider(WizardData.CustomerTable()));
+        target.GateTransaction();
+        var vm = SetupWizard(
+            "fake-back-copy",
+            new FakeProvider(WizardData.CustomerTable([new object?[] { 10, "Alice" }])),
+            target
+        );
+
+        await vm.Connection.ConnectCommand.ExecuteAsync(null);
+        await vm.GoNextCommand.ExecuteAsync(null); // → шаг таблиц
+        foreach (var schema in vm.Tables.Schemas)
+        foreach (var table in schema.AllTables)
+            table.IsChecked = true;
+        await vm.GoNextCommand.ExecuteAsync(null); // → сопоставление
+        await vm.GoNextCommand.ExecuteAsync(null); // → предпросмотр (dry run транзакций не открывает)
+        Assert.True(vm.Preview.HasPreview);
+
+        // Реальное копирование блокируется на открытии транзакции: покинуть страницу
+        // и сбросить мастера в этот момент нельзя — копия пишет в БД.
+        var copyTask = vm.Preview.StartCopyCommand.ExecuteAsync(null);
+        await Task.Yield();
+        Assert.True(vm.Preview.IsCopying);
+        Assert.False(vm.CanGoBack);
+        Assert.False(vm.CanRestart);
+
+        target.OpenGates();
+        await copyTask;
+        Assert.False(vm.Preview.IsCopying);
+        Assert.True(vm.CanGoBack);
+        Assert.True(vm.CanRestart);
+    }
+
+    [Fact]
+    public async Task Cancel_interrupts_dry_run_preview()
+    {
+        var target = new GatedProvider(
+            new FakeProvider(WizardData.CustomerTable(), WizardData.OrderTable())
+        );
+        target.GateMatchMap();
+        var vm = SetupWizard(
+            "fake-cancel-preview",
+            new FakeProvider(
+                WizardData.CustomerTable([new object?[] { 10, "Alice" }]),
+                WizardData.OrderTable([new object?[] { 1, 10 }])
+            ),
+            target
+        );
+
+        await vm.Connection.ConnectCommand.ExecuteAsync(null);
+        await vm.GoNextCommand.ExecuteAsync(null); // → шаг таблиц
+        foreach (var schema in vm.Tables.Schemas)
+        foreach (var table in schema.AllTables)
+            table.IsChecked = true;
+        await vm.GoNextCommand.ExecuteAsync(null); // → сопоставление
+
+        // Предпросмотр блокируется на загрузке словаря сопоставления приёмника.
+        var previewTask = vm.GoNextCommand.ExecuteAsync(null);
+        await Task.Yield();
+        Assert.True(vm.Preview.IsBusy);
+        Assert.True(vm.Preview.CanCancel);
+
+        // Отмена прерывает dry run и показывает итог об отмене.
+        vm.Preview.CancelCopyCommand.Execute(null);
+        await previewTask;
+        Assert.False(vm.Preview.IsBusy);
+        Assert.Equal(AppStrings.Current.PreviewCancelled, vm.Preview.PreviewSummary);
+    }
+
+    [Fact]
+    public async Task Cancel_interrupts_real_copy()
+    {
+        var target = new GatedProvider(new FakeProvider(WizardData.CustomerTable()));
+        target.GateTransaction();
+        var vm = SetupWizard(
+            "fake-cancel-copy",
+            new FakeProvider(WizardData.CustomerTable([new object?[] { 10, "Alice" }])),
+            target
+        );
+
+        await vm.Connection.ConnectCommand.ExecuteAsync(null);
+        await vm.GoNextCommand.ExecuteAsync(null); // → шаг таблиц
+        foreach (var schema in vm.Tables.Schemas)
+        foreach (var table in schema.AllTables)
+            table.IsChecked = true;
+        await vm.GoNextCommand.ExecuteAsync(null); // → сопоставление
+        await vm.GoNextCommand.ExecuteAsync(null); // → предпросмотр (dry run, транзакций не открывает)
+        Assert.True(vm.Preview.HasPreview);
+
+        // Копирование блокируется на открытии транзакции; отмена прерывает его.
+        var copyTask = vm.Preview.StartCopyCommand.ExecuteAsync(null);
+        await Task.Yield();
+        Assert.True(vm.Preview.IsCopying);
+        Assert.True(vm.Preview.CanCancel);
+
+        vm.Preview.CancelCopyCommand.Execute(null);
+        await copyTask;
+        Assert.False(vm.Preview.IsCopying);
+        Assert.Equal(AppStrings.Current.CopyCancelled, vm.Preview.SummaryText);
+    }
+}
+
+/// <summary>
+/// Обёртка над FakeProvider с «воротами»: указанная операция блокируется до вызова
+/// <see cref="OpenGates"/>. Позволяет проверять навигацию, пока в фоне идёт длительная
+/// операция (загрузка колонок, реальное копирование).
+/// </summary>
+internal sealed class GatedProvider : IDbProvider
+{
+    private readonly FakeProvider _inner;
+    private TaskCompletionSource? _detailsGate;
+    private TaskCompletionSource? _transactionGate;
+    private TaskCompletionSource? _matchMapGate;
+
+    public GatedProvider(FakeProvider inner) => _inner = inner;
+
+    /// <summary>Блокирует GetTableDetailsAsync до открытия ворот.</summary>
+    public void GateDetails() =>
+        _detailsGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Блокирует BeginTransactionAsync до открытия ворот (только реальное копирование).</summary>
+    public void GateTransaction() =>
+        _transactionGate = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+
+    /// <summary>Блокирует LoadMatchMapAsync до открытия ворот (dry run и реальное копирование).</summary>
+    public void GateMatchMap() =>
+        _matchMapGate = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+
+    public void OpenGates()
+    {
+        _detailsGate?.TrySetResult();
+        _transactionGate?.TrySetResult();
+        _matchMapGate?.TrySetResult();
+    }
+
+    public string Name => _inner.Name;
+    public bool IsConnected => _inner.IsConnected;
+
+    public Task ConnectAsync(CancellationToken ct = default) => _inner.ConnectAsync(ct);
+
+    public Task<IReadOnlyList<DbTable>> GetTablesAsync(CancellationToken ct = default) =>
+        _inner.GetTablesAsync(ct);
+
+    public async Task<DbTable> GetTableDetailsAsync(
+        DbObjectName table,
+        CancellationToken ct = default
+    )
+    {
+        if (_detailsGate is not null)
+            await _detailsGate.Task.WaitAsync(ct);
+        return await _inner.GetTableDetailsAsync(table, ct);
+    }
+
+    public IAsyncEnumerable<object?[]> ReadRowsAsync(
+        DbObjectName table,
+        IReadOnlyList<string> columns,
+        CancellationToken ct = default
+    ) => _inner.ReadRowsAsync(table, columns, ct);
+
+    public async Task<Dictionary<object, object>> LoadMatchMapAsync(
+        DbObjectName table,
+        IReadOnlyList<string> matchColumns,
+        string mappedColumn,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    )
+    {
+        if (_matchMapGate is not null)
+            await _matchMapGate.Task.WaitAsync(ct);
+        return await _inner.LoadMatchMapAsync(table, matchColumns, mappedColumn, transaction, ct);
+    }
+
+    public async Task<IDbWriteTransaction> BeginTransactionAsync(CancellationToken ct = default)
+    {
+        if (_transactionGate is not null)
+            await _transactionGate.Task.WaitAsync(ct);
+        return await _inner.BeginTransactionAsync(ct);
+    }
+
+    public Task<IReadOnlyList<object?>> InsertRowsAsync(
+        DbTable table,
+        IReadOnlyList<string> columns,
+        IReadOnlyList<object?[]> rows,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    ) => _inner.InsertRowsAsync(table, columns, rows, transaction, ct);
+
+    public Task<int> UpdateRowsAsync(
+        DbTable table,
+        IReadOnlyList<string> matchColumns,
+        IReadOnlyList<string> allColumns,
+        IReadOnlyList<string> updateColumns,
+        IReadOnlyList<object?[]> rows,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    ) =>
+        _inner.UpdateRowsAsync(
+            table,
+            matchColumns,
+            allColumns,
+            updateColumns,
+            rows,
+            transaction,
+            ct
+        );
+
+    public Task<int> ExecuteUpdatesAsync(
+        DbTable table,
+        string setColumn,
+        string whereColumn,
+        IReadOnlyList<(object? SetValue, object? WhereValue)> pairs,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    ) => _inner.ExecuteUpdatesAsync(table, setColumn, whereColumn, pairs, transaction, ct);
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

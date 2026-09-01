@@ -35,16 +35,27 @@ public partial class MainViewModel : ViewModelBase
     public bool IsStep2Active => CurrentStep == 2;
     public bool IsStep3Active => CurrentStep == 3;
 
+    /// <summary>
+    /// Идёт ли длительная операция (подключение, загрузка колонок, предпросмотр,
+    /// копирование). На время таких операций навигация (вперёд/назад/заново) блокируется.
+    /// </summary>
+    public bool IsAnyBusy =>
+        Connection.IsBusy || Tables.IsBusy || Mapping.IsBusy || Preview.IsBusy || Preview.IsCopying;
+
     public bool CanGoNext =>
-        CurrentStep switch
+        !IsAnyBusy
+        && CurrentStep switch
         {
-            0 => Connection.IsReady && !Connection.IsBusy,
-            1 => Tables.SelectedCount > 0 && !Tables.IsBusy,
-            2 => Mapping.AllHaveMatchColumns && !Mapping.IsBusy && !Preview.IsBusy,
+            0 => Connection.IsReady,
+            1 => Tables.SelectedCount > 0,
+            2 => Mapping.AllHaveMatchColumns,
             _ => false,
         };
 
-    public bool CanGoBack => CurrentStep > 0;
+    public bool CanGoBack => CurrentStep > 0 && !IsAnyBusy;
+
+    /// <summary>«Заново» нельзя нажимать во время операции: сброс задиспозит провайдеры под ней.</summary>
+    public bool CanRestart => !IsAnyBusy;
 
     public MainViewModel()
     {
@@ -168,16 +179,21 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     private void NotifyNavigationState()
     {
+        OnPropertyChanged(nameof(IsAnyBusy));
         OnPropertyChanged(nameof(CanGoNext));
         OnPropertyChanged(nameof(CanGoBack));
+        OnPropertyChanged(nameof(CanRestart));
         GoNextCommand.NotifyCanExecuteChanged();
         GoBackCommand.NotifyCanExecuteChanged();
+        RestartCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanGoNext))]
     private async Task GoNextAsync()
     {
-        if (CurrentStep == 1)
+        var fromStep = CurrentStep;
+
+        if (fromStep == 1)
         {
             SaveSelectedTables();
             var configs = Tables.GetSelectedTables();
@@ -186,7 +202,7 @@ public partial class MainViewModel : ViewModelBase
                 .MatchColumnsBySource.GetValueOrDefault(Connection.SourceConnectionString);
             await Mapping.InitializeAsync(configs, Connection.Source!, savedColumns);
         }
-        else if (CurrentStep == 2)
+        else if (fromStep == 2)
         {
             SaveMatchColumns();
             // Переходим на шаг предпросмотра сразу, чтобы показать индикатор выполнения dry run.
@@ -196,13 +212,18 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        // Пока выполнялась асинхронная работа, пользователь мог уйти назад —
+        // не перепрыгиваем его на шаг вперёд.
+        if (CurrentStep != fromStep)
+            return;
+
         CurrentStep++;
     }
 
     [RelayCommand(CanExecute = nameof(CanGoBack))]
     private void GoBack() => CurrentStep--;
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRestart))]
     private async Task RestartAsync()
     {
         await Connection.CleanupAsync();

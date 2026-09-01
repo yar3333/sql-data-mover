@@ -81,7 +81,7 @@
         <!-- Подвал: докируется вниз до контента. -->
         <Border DockPanel.Dock="Bottom" Padding="24,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource CardBorder}">
             <Grid ColumnDefinitions="Auto,*,Auto">
-                <Button x:Name="RestartButton" Content="{Binding Restart, Source={x:Static loc:AppStrings.Current}}" Command="{Binding RestartCommand}" Padding="18,7"/>
+                <Button x:Name="RestartButton" Content="{Binding Restart, Source={x:Static loc:AppStrings.Current}}" Command="{Binding RestartCommand}" IsEnabled="{Binding CanRestart}" Padding="18,7"/>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
                     <Button x:Name="BackButton" Content="{Binding Back, Source={x:Static loc:AppStrings.Current}}" Command="{Binding GoBackCommand}" Padding="20,7" IsEnabled="{Binding CanGoBack}"/>
                     <Button x:Name="NextButton" Content="{Binding Next, Source={x:Static loc:AppStrings.Current}}" Command="{Binding GoNextCommand}" Classes="primary" Padding="24,7" IsEnabled="{Binding CanGoNext}"/>
