@@ -53,6 +53,33 @@ trusted connection). Prepare the test databases before the first run:
 sqlcmd -S localhost -E -i tests/sql/setup-test-databases.sql
 ```
 
+## Releasing a new version
+
+Releases are built from git tags: pushing a tag `v<major>[.<minor>[.<patch>]][-prerelease]`
+(e.g. `v1.2.3`, `v1.2.3-rc.1`) triggers the [release workflow](.github/workflows/release.yml) —
+build, tests, a self-contained `win-x64` publish and a GitHub Release with the changelog.
+
+How to release a new version:
+
+1. Install the versioning tool:
+
+   ```bash
+   dotnet tool install -g dotnet-version-cli
+   ```
+
+2. Bump the version. The tool edits the version in `Directory.Build.props`,
+   then commits it as `vX.Y.Z` and creates a tag with the same name:
+
+   ```bash
+   dotnet version patch   # "patch", "minor" or "major"
+   ```
+
+3. Push the branch and the tag; the release workflow does the rest:
+
+   ```bash
+   git push && git push --tags
+   ```
+
 ## Usage
 
 A wizard with four steps:

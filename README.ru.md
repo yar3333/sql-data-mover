@@ -53,6 +53,33 @@ dotnet test tests/SqlDataMover.Core.Tests
 sqlcmd -S localhost -E -i tests/sql/setup-test-databases.sql
 ```
 
+## Выпуск новой версии
+
+Релизы собираются из git-тегов: push тега `v<мажор>[.<минор>[.<патч>]][-prerelease]`
+(например `v1.2.3`, `v1.2.3-rc.1`) запускает [workflow релиза](.github/workflows/release.yml) —
+сборка, тесты, публикация самодостаточного `win-x64` и GitHub Release со списком изменений.
+
+Как выпустить новую версию:
+
+1. Установите инструмент версионирования:
+
+   ```bash
+   dotnet tool install -g dotnet-version-cli
+   ```
+
+2. Поднимите версию. Инструмент правит версию в `Directory.Build.props`, затем создаёт
+   коммит `vX.Y.Z` и тег с тем же именем:
+
+   ```bash
+   dotnet version patch   # "patch", "minor" или "major"
+   ```
+
+3. Запуште ветку и тег — остальное сделает workflow релиза:
+
+   ```bash
+   git push && git push --tags
+   ```
+
 ## Использование
 
 Мастер из четырёх шагов:
