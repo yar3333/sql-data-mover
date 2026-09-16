@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SqlDataMover.App.Localization;
 using SqlDataMover.App.Models;
+using SqlDataMover.Core;
 using SqlDataMover.Core.Abstractions;
 using SqlDataMover.Core.Models;
 
@@ -59,10 +60,13 @@ public partial class ConnectionPageViewModel : ViewModelBase
         SelectedProvider = Providers.FirstOrDefault();
 
         var settings = AppSettingsStore.Load();
-        foreach (var connectionString in settings.SourceConnectionStrings)
-            SourceHistory.Add(new ConnectionHistoryEntry(connectionString));
-        foreach (var connectionString in settings.TargetConnectionStrings)
-            TargetHistory.Add(new ConnectionHistoryEntry(connectionString));
+        // Обходим в обратном порядке: свежие записи в файле идут первыми, а AddToHistory
+        // кладёт новые сверху и перезаписывает дубликаты по «сервер / БД» — в итоге
+        // сохраняется порядок «свежие сверху» и список остаётся уникальным.
+        foreach (var connectionString in settings.SourceConnectionStrings.AsEnumerable().Reverse())
+            AddToHistory(SourceHistory, connectionString);
+        foreach (var connectionString in settings.TargetConnectionStrings.AsEnumerable().Reverse())
+            AddToHistory(TargetHistory, connectionString);
     }
 
     partial void OnSourceSelectedEntryChanged(ConnectionHistoryEntry? value)
@@ -134,7 +138,11 @@ public partial class ConnectionPageViewModel : ViewModelBase
         StatusMessage = null;
     }
 
-    /// <summary>Добавляет строку подключения в историю: свежие сверху, без дубликатов, не более MaxHistory.</summary>
+    /// <summary>
+    /// Добавляет строку подключения в историю: свежие сверху, не более MaxHistory.
+    /// Запись с тем же отображаемым именем «сервер / БД» перезаписывается новой,
+    /// чтобы в списке не было неразличимых дубликатов.
+    /// </summary>
     private static void AddToHistory(
         ObservableCollection<ConnectionHistoryEntry> history,
         string connectionString
@@ -143,7 +151,8 @@ public partial class ConnectionPageViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(connectionString))
             return;
 
-        var existing = history.FirstOrDefault(e => e.ConnectionString == connectionString);
+        var displayName = ConnectionStringFormatter.FormatDisplay(connectionString);
+        var existing = history.FirstOrDefault(e => e.DisplayName == displayName);
         if (existing is not null)
             history.Remove(existing);
 

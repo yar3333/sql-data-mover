@@ -523,6 +523,37 @@ public class MainViewModelTests
         Assert.False(vm.Preview.IsCopying);
         Assert.Equal(AppStrings.Current.CopyCancelled, vm.Preview.SummaryText);
     }
+
+    [Fact]
+    public void Connection_history_is_unique_by_server_database()
+    {
+        // Две записи с одинаковым «сервер / БД», но разными строками подключения,
+        // и одна с другим сервером. На старте в списке источника не должно быть
+        // неразличимых дубликатов: остаётся только свежайшая из совпавших.
+        AppSettingsStore.Save(new AppSettings
+        {
+            SourceConnectionStrings =
+            [
+                "Server=localhost;Database=SourceDb;Encrypt=False",
+                "Server=localhost;Database=SourceDb;Encrypt=Optional",
+                "Server=other;Database=OtherDb",
+            ],
+            TargetConnectionStrings = ["Server=localhost;Database=SourceDb;Encrypt=False"],
+        });
+
+        var vm = new ConnectionPageViewModel();
+
+        Assert.Equal(2, vm.SourceHistory.Count);
+        var local = vm.SourceHistory.Single(e => e.DisplayName == "localhost / SourceDb");
+        // Перезаписана свежайшей из совпавших («Encrypt=False» стоит в файле первым).
+        Assert.Equal(
+            "Server=localhost;Database=SourceDb;Encrypt=False",
+            local.ConnectionString
+        );
+        Assert.Single(vm.SourceHistory, e => e.DisplayName == "other / OtherDb");
+        // Приёмник тоже уникален.
+        Assert.Single(vm.TargetHistory);
+    }
 }
 
 /// <summary>
