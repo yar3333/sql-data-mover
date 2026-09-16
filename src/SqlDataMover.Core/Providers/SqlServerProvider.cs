@@ -454,6 +454,55 @@ public sealed class SqlServerProvider : IDbProvider
         return await cmd.ExecuteNonQueryAsync(ct);
     }
 
+    public async Task SetIdentityInsertAsync(
+        DbObjectName table,
+        bool enabled,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    )
+    {
+        await using var cmd = new SqlCommand
+        {
+            Connection = _connection,
+            Transaction = GetSqlTransaction(transaction),
+            CommandText = $"SET IDENTITY_INSERT {QuoteTable(table)} {(enabled ? "ON" : "OFF")}",
+        };
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    public async Task<long> GetIdentityCurrentAsync(
+        DbObjectName table,
+        CancellationToken ct = default
+    )
+    {
+        await using var cmd = new SqlCommand
+        {
+            Connection = _connection,
+            CommandText = "SELECT IDENT_CURRENT(@table)",
+        };
+        cmd.Parameters.AddWithValue("@table", table.ToString());
+        var value = await cmd.ExecuteScalarAsync(ct);
+        return value is null or DBNull ? 0 : Convert.ToInt64(value);
+    }
+
+    public async Task ReseedIdentityAsync(
+        DbObjectName table,
+        long newValue,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    )
+    {
+        await using var cmd = new SqlCommand
+        {
+            Connection = _connection,
+            Transaction = GetSqlTransaction(transaction),
+        };
+        cmd.Parameters.AddWithValue("@table", table.ToString());
+        cmd.Parameters.AddWithValue("@seed", newValue);
+        cmd.CommandText = "DBCC CHECKIDENT (@table, RESEED, @seed) WITH NO_INFOMSGS";
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
     public ValueTask DisposeAsync()
     {
         _connection.Dispose();

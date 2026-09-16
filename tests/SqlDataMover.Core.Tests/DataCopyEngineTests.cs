@@ -56,7 +56,8 @@ public class DataCopyEngineTests
     [Fact]
     public async Task Copy_remaps_identity_and_substitutes_foreign_keys()
     {
-        // Источник: два клиента (Id 10, 20). Цель: уже есть клиент Id=1.
+        // Источник: два клиента (Id 10, 20, имена A, B). Цель: уже есть клиент Id=1 ("PRE").
+        // Сопоставление по Name (не identity) — identity клиентов переназначается приёмником.
         var source = new FakeProvider(
             CustomerTable([new object?[] { 10, "A" }, new object?[] { 20, "B" }]),
             OrderTable([new object?[] { 1, 10 }, new object?[] { 2, 20 }, new object?[] { 3, 10 }])
@@ -65,7 +66,7 @@ public class DataCopyEngineTests
 
         var engine = new DataCopyEngine(source, target);
         var result = await engine.CopyAsync(
-            [Config(Customers, "Id"), Config(Orders, "Id")],
+            [Config(Customers, "Name"), Config(Orders, "Id")],
             CancellationToken.None
         );
 
@@ -90,7 +91,7 @@ public class DataCopyEngineTests
 
         var customersResult = result.Tables.Single(t => t.Table == Customers);
         Assert.Equal(2, customersResult.Inserted);
-        Assert.Equal(0, customersResult.Updated); // строк с Id=1 в источнике нет — существующая строка не затронута
+        Assert.Equal(0, customersResult.Updated); // строк с именами A/B в источнике нет — существующая строка не затронута
     }
 
     [Fact]
@@ -205,7 +206,7 @@ public class DataCopyEngineTests
 
         var engine = new DataCopyEngine(source, target);
         var result = await engine.CopyAsync(
-            [Config(Orders, "Id"), Config(Customers, "Id")],
+            [Config(Orders, "Id"), Config(Customers, "Name")],
             CancellationToken.None
         );
 
@@ -216,6 +217,107 @@ public class DataCopyEngineTests
 
         var orders = target.GetTable(Orders).Rows;
         Assert.Equal(1, orders[0][1]); // CustomerId 10 → новый ID 1
+    }
+
+    [Fact]
+    public async Task Copy_preserves_identity_values_when_identity_is_match_column()
+    {
+        // Поле сопоставления — identity (Id): значения вставляются как есть (SET IDENTITY_INSERT),
+        // новые ID не генерируются, счётчик приёмника выравнивается по источнику.
+        var source = new FakeProvider(
+            CustomerTable([new object?[] { 10, "A" }, new object?[] { 20, "B" }]),
+            OrderTable([new object?[] { 1, 10 }, new object?[] { 2, 20 }])
+        );
+        var target = new FakeProvider(CustomerTable([new object?[] { 1, "PRE" }]), OrderTable([]));
+
+        var engine = new DataCopyEngine(source, target);
+        var result = await engine.CopyAsync(
+            [Config(Customers, "Id"), Config(Orders, "Id")],
+            CancellationToken.None
+        );
+
+        Assert.True(
+            result.Success,
+            string.Join("; ", result.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        // Клиенты: существующая строка осталась, вставленные сохранили исходные Id 10, 20.
+        var rows = target.GetTable(Customers).Rows;
+        Assert.Equal(3, rows.Count);
+        Assert.Equal(1, rows[0][0]);
+        Assert.Equal(10, rows[1][0]);
+        Assert.Equal(20, rows[2][0]);
+
+        // FK дочерней таблицы разрешились на сохранённые Id (10 → 10, 20 → 20);
+        // identity заказов тоже сохранён.
+        var orders = target.GetTable(Orders).Rows;
+        Assert.Equal(2, orders.Count);
+        Assert.Equal(1, orders[0][0]);
+        Assert.Equal(10, orders[0][1]);
+        Assert.Equal(2, orders[1][0]);
+        Assert.Equal(20, orders[1][1]);
+
+        var customersResult = result.Tables.Single(t => t.Table == Customers);
+        Assert.Equal(2, customersResult.Inserted);
+        Assert.Equal(0, customersResult.Updated);
+
+        // Счётчик identity приёмника выровнен по источнику (20): следующая автогенерация даст 21.
+        Assert.Equal(20, await target.GetIdentityCurrentAsync(Customers));
+        var next = target.GetTable(Customers).NewRow(["Name"], ["C"]);
+        Assert.Equal(21L, Convert.ToInt64(next[0]));
+    }
+
+    [Fact]
+    public async Task Copy_updates_existing_row_when_identity_is_match_column()
+    {
+        // Строка с Id=10 уже есть в приёмнике — по identity-ключу она обновится, Id сохранится.
+        var source = new FakeProvider(CustomerTable([new object?[] { 10, "New" }]));
+        var target = new FakeProvider(CustomerTable([new object?[] { 10, "Old" }]));
+
+        var engine = new DataCopyEngine(source, target);
+        var result = await engine.CopyAsync([Config(Customers, "Id")], CancellationToken.None);
+
+        Assert.True(
+            result.Success,
+            string.Join("; ", result.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        var rows = target.GetTable(Customers).Rows;
+        Assert.Single(rows);
+        Assert.Equal(10, rows[0][0]);
+        Assert.Equal("New", rows[0][1]);
+
+        var customersResult = result.Tables.Single(t => t.Table == Customers);
+        Assert.Equal(0, customersResult.Inserted);
+        Assert.Equal(1, customersResult.Updated);
+    }
+
+    [Fact]
+    public async Task DryRun_preserves_identity_values_in_preview()
+    {
+        // В предпросмотре identity тоже «сохраняется»: сопоставление идёт по исходным значениям
+        // (не по фиктивным отрицательным), дочерняя таблица разрешается без ошибок.
+        var source = new FakeProvider(
+            CustomerTable([new object?[] { 10, "A" }]),
+            OrderTable([new object?[] { 1, 10 }])
+        );
+        var target = new FakeProvider(CustomerTable([]), OrderTable([]));
+
+        var engine = new DataCopyEngine(source, target, new CopySettings { DryRun = true });
+        var result = await engine.CopyAsync(
+            [Config(Customers, "Id"), Config(Orders, "Id")],
+            CancellationToken.None
+        );
+
+        Assert.True(
+            result.Success,
+            string.Join("; ", result.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        Assert.Equal(1, result.Tables.Single(t => t.Table == Customers).Inserted);
+        Assert.Equal(1, result.Tables.Single(t => t.Table == Orders).Inserted);
+        Assert.Empty(target.GetTable(Customers).Rows);
+        Assert.Empty(target.GetTable(Orders).Rows);
     }
 
     [Fact]

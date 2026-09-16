@@ -22,6 +22,9 @@ the top-right corner of the window; the choice is remembered. ([Русская �
   - row missing → inserted with a new auto-increment ID.
 - **Auto-increment ID remapping**: original values are not copied; the target generates new ones
   and an "original ID → new ID" mapping is kept in memory.
+- **Identity preservation**: if you select an auto-increment (identity) column as a match column,
+  its values are copied from the source as-is (`SET IDENTITY_INSERT`); after the copy the target
+  identity counter is aligned with the source, so future auto-generated IDs match.
 - **Foreign key substitution**: when dependent tables are copied, the new parent IDs are
   automatically substituted into the child FK columns. Tables are copied in dependency order
   (parents before children), including self-referencing tables (two-phase processing).
@@ -111,6 +114,9 @@ If `Encrypt` and `TrustServerCertificate` are not specified, the app adds `Encry
    NULL in any match column is always inserted.
 3. Source rows are read and inserted in batches; the new ID of each inserted row is returned via
    `OUTPUT INSERTED.[col]` and recorded in the mapping.
+   If an identity column is selected as a match column, identity values are copied as-is
+   (`SET IDENTITY_INSERT`), and after the copy the target identity counter is aligned with
+   the source (`DBCC CHECKIDENT ... RESEED`).
 4. When a child table is copied, its FK columns are replaced with the new IDs from the mapping.
    Self-referencing FKs are filled in a second pass (`UPDATE`).
 5. Each table is copied in its own transaction: on error its changes are rolled back and the
@@ -132,7 +138,8 @@ updating by match columns, transactions) and register it in `DbProviderFactory`.
 ## Limitations
 
 - Target tables must exist: the schema (columns, indexes) is neither created nor migrated.
-- Only common columns are copied; computed and target identity columns are skipped.
+- Only common columns are copied; computed and target identity columns are skipped
+  (unless an identity column is selected as a match column — then it is copied as-is).
 - The match column combination must be truly unique in the source (otherwise "the last row wins").
 - A self-referencing table with a `NOT NULL` FK: a child row encountered in the source before its
   parent will fail to insert.

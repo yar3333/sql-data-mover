@@ -642,5 +642,22 @@ internal sealed class GatedProvider : IDbProvider
         CancellationToken ct = default
     ) => _inner.ExecuteUpdatesAsync(table, setColumn, whereColumn, pairs, transaction, ct);
 
+    public Task SetIdentityInsertAsync(
+        DbObjectName table,
+        bool enabled,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    ) => _inner.SetIdentityInsertAsync(table, enabled, transaction, ct);
+
+    public Task<long> GetIdentityCurrentAsync(DbObjectName table, CancellationToken ct = default) =>
+        _inner.GetIdentityCurrentAsync(table, ct);
+
+    public Task ReseedIdentityAsync(
+        DbObjectName table,
+        long newValue,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    ) => _inner.ReseedIdentityAsync(table, newValue, transaction, ct);
+
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

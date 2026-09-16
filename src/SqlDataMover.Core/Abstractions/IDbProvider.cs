@@ -45,8 +45,10 @@ public interface IDbProvider : IAsyncDisposable
     Task<IDbWriteTransaction> BeginTransactionAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Пакетная вставка строк (массивы выровнены по <paramref name="columns"/>, identity-колонка в них не входит).
-    /// Возвращает значения identity для вставленных строк в том же порядке; пустой список, если identity нет.
+    /// Пакетная вставка строк (массивы выровнены по <paramref name="columns"/>). Обычно identity-колонка
+    /// в список не входит и значение назначает СУБД; если она входит (режим <see cref="SetIdentityInsertAsync"/>),
+    /// значения вставляются как есть. Возвращает значения identity для вставленных строк в том же порядке;
+    /// пустой список, если identity нет.
     /// </summary>
     Task<IReadOnlyList<object?>> InsertRowsAsync(
         DbTable table,
@@ -77,6 +79,32 @@ public interface IDbProvider : IAsyncDisposable
         string setColumn,
         string whereColumn,
         IReadOnlyList<(object? SetValue, object? WhereValue)> pairs,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// Включает или выключает режим вставки явных значений identity (SET IDENTITY_INSERT) для таблицы.
+    /// Используется, когда identity-колонка приёмника выбрана полем сопоставления: значения identity
+    /// копируются из источника как есть. Должен вызываться в контексте транзакции записи.
+    /// </summary>
+    Task SetIdentityInsertAsync(
+        DbObjectName table,
+        bool enabled,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Текущее значение счётчика identity (IDENT_CURRENT) таблицы — для выравнивания счётчика приёмника.</summary>
+    Task<long> GetIdentityCurrentAsync(DbObjectName table, CancellationToken ct = default);
+
+    /// <summary>
+    /// Устанавливает счётчик identity таблицы (DBCC CHECKIDENT RESEED), чтобы приёмник продолжал
+    /// нумерацию источника. Вызывается в контексте транзакции записи.
+    /// </summary>
+    Task ReseedIdentityAsync(
+        DbObjectName table,
+        long newValue,
         IDbWriteTransaction? transaction = null,
         CancellationToken ct = default
     );

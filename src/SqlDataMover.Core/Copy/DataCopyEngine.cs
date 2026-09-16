@@ -180,21 +180,34 @@ public sealed class DataCopyEngine
             EnsureColumnExists(tgt, column);
         }
 
-        // Колонки, которые копируем: общие для источника и приёмника, без вычисляемых и identity приёмника.
+        var identity = tgt.IdentityColumn is not null
+            ? tgt.GetColumn(tgt.IdentityColumn)!.Name
+            : null;
+
+        // Пользователь выбрал identity-колонку приёмника полем сопоставления → значения identity
+        // копируются из источника как есть (для приёмника включается SET IDENTITY_INSERT).
+        var preserveIdentity =
+            identity is not null
+            && cfg.MatchColumns.Contains(identity, StringComparer.OrdinalIgnoreCase);
+
+        // Колонки, которые копируем: общие для источника и приёмника, без вычисляемых; без identity
+        // приёмника, если только identity не выбран полем сопоставления (тогда он вставляется как есть).
         var insertColumns = src
             .Columns.Where(c => !c.IsComputed)
-            .Where(c => tgt.GetColumn(c.Name) is { IsComputed: false, IsIdentity: false })
+            .Where(c =>
+            {
+                var target = tgt.GetColumn(c.Name);
+                return target is { IsComputed: false } && (preserveIdentity || !target.IsIdentity);
+            })
             .Select(c => c.Name)
             .ToList();
 
         if (insertColumns.Count == 0)
             throw new InvalidOperationException(CoreStrings.NoCommonColumns);
 
-        // Оригинальное identity-значение читаем тоже — оно нужно для сопоставления ID, но в INSERT не попадает.
+        // Оригинальное identity-значение читаем тоже — оно нужно для сопоставления ID
+        // (а при preserveIdentity вставляется как есть).
         var readColumns = insertColumns.ToList();
-        var identity = tgt.IdentityColumn is not null
-            ? tgt.GetColumn(tgt.IdentityColumn)!.Name
-            : null;
         var identityIndex = -1;
         if (identity is not null)
         {
@@ -322,9 +335,11 @@ public sealed class DataCopyEngine
             {
                 foreach (var pending in pendingInserts)
                 {
-                    var newMappedId = mappedColumnIsIdentity
-                        ? dryRunNextId--
-                        : pending.Values[mappedIndex];
+                    var newMappedId = preserveIdentity
+                        ? pending.Values[identityIndex]
+                        : mappedColumnIsIdentity
+                            ? dryRunNextId--
+                            : pending.Values[mappedIndex];
                     if (newMappedId is null)
                         throw new InvalidOperationException(
                             CoreStrings.FormatNoNewId(src.Name.ToString())
@@ -345,34 +360,49 @@ public sealed class DataCopyEngine
                 return;
             }
 
-            var newIds = await _target.InsertRowsAsync(
-                tgt,
-                insertColumns,
-                pendingInserts.Select(p => p.Values).ToList(),
-                tx,
-                ct
-            );
-
-            for (var i = 0; i < pendingInserts.Count; i++)
+            // При копировании identity как есть включаем вставку явных значений на время вставки.
+            if (preserveIdentity)
+                await _target.SetIdentityInsertAsync(tgt.Name, true, tx, ct);
+            try
             {
-                var pending = pendingInserts[i];
-                var newMappedId = mappedColumnIsIdentity ? newIds[i] : pending.Values[mappedIndex];
-                if (newMappedId is null)
-                    throw new InvalidOperationException(
-                        CoreStrings.FormatNoNewId(src.Name.ToString())
-                    );
-
-                RecordMappings(
-                    src.Name,
-                    pending.Values,
-                    newMappedId,
-                    referencedCols,
-                    identityIndex,
-                    result
+                var newIds = await _target.InsertRowsAsync(
+                    tgt,
+                    insertColumns,
+                    pendingInserts.Select(p => p.Values).ToList(),
+                    tx,
+                    ct
                 );
-                foreach (var (fkColumn, parentColumn, origValue) in pending.SelfRefEntries)
-                    phase2.Add((newMappedId, fkColumn, parentColumn, origValue));
-                result.Inserted++;
+
+                for (var i = 0; i < pendingInserts.Count; i++)
+                {
+                    var pending = pendingInserts[i];
+                    var newMappedId = preserveIdentity
+                        ? pending.Values[identityIndex]
+                        : mappedColumnIsIdentity
+                            ? newIds[i]
+                            : pending.Values[mappedIndex];
+                    if (newMappedId is null)
+                        throw new InvalidOperationException(
+                            CoreStrings.FormatNoNewId(src.Name.ToString())
+                        );
+
+                    RecordMappings(
+                        src.Name,
+                        pending.Values,
+                        newMappedId,
+                        referencedCols,
+                        identityIndex,
+                        result
+                    );
+                    foreach (var (fkColumn, parentColumn, origValue) in pending.SelfRefEntries)
+                        phase2.Add((newMappedId, fkColumn, parentColumn, origValue));
+                    result.Inserted++;
+                }
+            }
+            finally
+            {
+                if (preserveIdentity)
+                    await _target.SetIdentityInsertAsync(tgt.Name, false, tx, ct);
             }
 
             pendingInserts.Clear();
@@ -513,6 +543,14 @@ public sealed class DataCopyEngine
 
             if (pairs.Count > 0)
                 await _target.ExecuteUpdatesAsync(tgt, group.Key, mappedColumn, pairs, tx, ct);
+        }
+
+        // После копирования выравниваем счётчик identity приёмника со счётчиком источника,
+        // чтобы последующие вставки в приёмнике продолжали нумерацию источника.
+        if (preserveIdentity)
+        {
+            var sourceIdentity = await _source.GetIdentityCurrentAsync(src.Name, ct);
+            await _target.ReseedIdentityAsync(src.Name, sourceIdentity, tx, ct);
         }
     }
 

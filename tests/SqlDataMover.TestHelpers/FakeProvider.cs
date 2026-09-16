@@ -186,6 +186,34 @@ public sealed class FakeProvider : IDbProvider
         return Task.FromResult(updated);
     }
 
+    public Task SetIdentityInsertAsync(
+        DbObjectName table,
+        bool enabled,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    ) =>
+        // В памяти ограничений на вставку identity нет — флаг только отмечается.
+        Task.FromResult(_tables[table].IdentityInsertEnabled = enabled);
+
+    public Task<long> GetIdentityCurrentAsync(DbObjectName table, CancellationToken ct = default)
+    {
+        var ft = _tables[table];
+        return Task.FromResult(
+            ft.Meta.IdentityColumn is null ? 0 : ft.GetIdentityCurrent()
+        );
+    }
+
+    public Task ReseedIdentityAsync(
+        DbObjectName table,
+        long newValue,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    )
+    {
+        _tables[table].ReseedIdentity(newValue);
+        return Task.CompletedTask;
+    }
+
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     private static int IndexIn(IReadOnlyList<string> columns, string name)
@@ -207,8 +235,13 @@ public sealed class FakeTransaction : IDbWriteTransaction
 /// <summary>Таблица в памяти. Строки — массивы значений, выровненные по колонкам Meta.Columns.</summary>
 public sealed class FakeTable
 {
+    private long _identityCurrent;
+
     public required DbTable Meta { get; init; }
     public List<object?[]> Rows { get; } = [];
+
+    /// <summary>Отмечает, что движок включил режим IDENTITY_INSERT (для проверки в тестах).</summary>
+    public bool IdentityInsertEnabled { get; set; }
 
     public int ColumnIndex(string name)
     {
@@ -218,7 +251,22 @@ public sealed class FakeTable
         return -1;
     }
 
-    /// <summary>Создаёт строку из значений по списку колонок и присваивает следующий identity.</summary>
+    /// <summary>Аналог IDENT_CURRENT: последнее назначенное (или переданное явно) значение identity.</summary>
+    public long GetIdentityCurrent()
+    {
+        var idx = ColumnIndex(Meta.IdentityColumn!);
+        var max =
+            Rows.Count > 0 ? Rows.Max(r => r[idx] is null ? 0L : Convert.ToInt64(r[idx])) : 0L;
+        return Math.Max(max, _identityCurrent);
+    }
+
+    /// <summary>Аналог DBCC CHECKIDENT (RESEED): задаёт текущее значение счётчика identity.</summary>
+    public void ReseedIdentity(long value) => _identityCurrent = value;
+
+    /// <summary>
+    /// Создаёт строку из значений по списку колонок. Значение identity, переданное явно
+    /// (режим IDENTITY_INSERT), сохраняется и подстраивает счётчик; иначе присваивается следующий identity.
+    /// </summary>
     public object?[] NewRow(IReadOnlyList<string> columns, IReadOnlyList<object?> values)
     {
         var row = new object?[Meta.Columns.Count];
@@ -226,17 +274,24 @@ public sealed class FakeTable
             row[ColumnIndex(columns[i])] = values[i];
 
         if (Meta.IdentityColumn is { } identity)
-            row[ColumnIndex(identity)] = NextIdentity();
+        {
+            var idx = ColumnIndex(identity);
+            if (row[idx] is not null)
+            {
+                var value = Convert.ToInt64(row[idx]);
+                if (value > _identityCurrent)
+                    _identityCurrent = value;
+            }
+            else
+            {
+                var next = GetIdentityCurrent() + 1;
+                // В тестах identity обычно int; long сохраняем только для значений за пределами int.
+                row[idx] = next > int.MaxValue ? (object)next : (int)next;
+                _identityCurrent = Convert.ToInt64(row[idx]);
+            }
+        }
 
         return row;
-    }
-
-    private int NextIdentity()
-    {
-        var idx = ColumnIndex(Meta.IdentityColumn!);
-        var max =
-            Rows.Count > 0 ? Rows.Max(r => r[idx] is null ? 0L : Convert.ToInt64(r[idx])) : 0L;
-        return (int)(max + 1);
     }
 }
 
