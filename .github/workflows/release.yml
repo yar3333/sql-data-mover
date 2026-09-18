@@ -41,6 +41,8 @@ jobs:
           while ($parts.Count -lt 3) { $parts += '0' }
           "prefix=$($parts -join '.')" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "suffix=$suffix" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          # версия без префикса v (например v1.2.3-rc.1 -> 1.2.3-rc.1) — для имени exe
+          "version=$($tag.Substring(1))" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -76,6 +78,7 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item publish/win-x64/*.pdb -ErrorAction SilentlyContinue # нативные символы не нужны в релизе
+          Rename-Item publish/win-x64/SqlDataMover.App.exe -NewName "SqlDataMover-${{ steps.version.outputs.version }}.exe"
           Compress-Archive -Path publish/win-x64/* -DestinationPath "SqlDataMover-$env:GITHUB_REF_NAME-win-x64.zip" -Force
           Get-FileHash "SqlDataMover-$env:GITHUB_REF_NAME-win-x64.zip" -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } |
