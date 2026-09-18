@@ -115,6 +115,12 @@ public partial class ConnectionPageViewModel : ViewModelBase
 
             AddToHistory(SourceHistory, SourceConnectionString);
             AddToHistory(TargetHistory, TargetConnectionString);
+            // AddToHistory пересоздаёт запись: выбранный элемент удаляется из коллекции,
+            // и редактируемый ComboBox сбрасывает своё текстовое поле. Возвращаем
+            // выделение на только что добавленную (верхнюю) запись, чтобы выбор
+            // и строка подключения не пропали.
+            SourceSelectedEntry = SourceHistory.FirstOrDefault();
+            TargetSelectedEntry = TargetHistory.FirstOrDefault();
             SaveSettings();
         }
         catch (Exception ex)

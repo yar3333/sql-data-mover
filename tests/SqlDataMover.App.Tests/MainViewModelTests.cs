@@ -270,6 +270,33 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public async Task Connect_keeps_selected_history_entry_bound_after_recreate()
+    {
+        // Пользователь выбрал строку подключения из истории. Успешное подключение
+        // пересоздаёт запись AddToHistory (Remove + Insert наверх): выделение не должно
+        // «зависнуть» на удалённом объекте, иначе редактируемый ComboBox сбросит текст.
+        var vm = SetupWizard(
+            "fake-selection",
+            new FakeProvider(WizardData.CustomerTable([new object?[] { 10, "Alice" }])),
+            new FakeProvider(WizardData.CustomerTable())
+        );
+        vm.Connection.SourceHistory.Add(new ConnectionHistoryEntry("src"));
+        vm.Connection.SourceSelectedEntry = vm.Connection.SourceHistory[0];
+        vm.Connection.TargetHistory.Add(new ConnectionHistoryEntry("tgt"));
+        vm.Connection.TargetSelectedEntry = vm.Connection.TargetHistory[0];
+
+        await vm.Connection.ConnectCommand.ExecuteAsync(null);
+
+        Assert.True(vm.Connection.IsReady);
+        // Выделение указывает на запись, которая реально в списке (наверху), а не на удалённую.
+        Assert.Same(vm.Connection.SourceHistory[0], vm.Connection.SourceSelectedEntry);
+        Assert.Same(vm.Connection.TargetHistory[0], vm.Connection.TargetSelectedEntry);
+        // Значения в текстовых полях не пропали.
+        Assert.Equal("src", vm.Connection.SourceConnectionString);
+        Assert.Equal("tgt", vm.Connection.TargetConnectionString);
+    }
+
+    [Fact]
     public async Task Match_columns_are_saved_when_leaving_mapping_step()
     {
         var vm = SetupWizard(
