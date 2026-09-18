@@ -152,7 +152,12 @@ public partial class ConnectionPageViewModel : ViewModelBase
             return;
 
         var displayName = ConnectionStringFormatter.FormatDisplay(connectionString);
-        var existing = history.FirstOrDefault(e => e.DisplayName == displayName);
+        // Сравнение без учёта регистра: имена серверов и БД регистронезависимы
+        // (как коллация SQL Server по умолчанию), поэтому записи, различающиеся
+        // только регистром, считаются одним «сервер / БД».
+        var existing = history.FirstOrDefault(e =>
+            string.Equals(e.DisplayName, displayName, StringComparison.OrdinalIgnoreCase)
+        );
         if (existing is not null)
             history.Remove(existing);
 

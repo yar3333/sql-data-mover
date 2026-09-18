@@ -554,6 +554,35 @@ public class MainViewModelTests
         // Приёмник тоже уникален.
         Assert.Single(vm.TargetHistory);
     }
+
+    [Fact]
+    public void Connection_history_is_unique_case_insensitively()
+    {
+        // Записи, различающиеся только регистром сервера/БД, считаются одним
+        // «сервер / БД» и не должны давать неразличимых дубликатов.
+        AppSettingsStore.Save(new AppSettings
+        {
+            SourceConnectionStrings =
+            [
+                "Server=LOCALHOST;Database=SOURCEDB;Encrypt=False",
+                "Server=localhost;Database=sourcedb;Encrypt=False",
+                "Server=other;Database=OtherDb",
+            ],
+            TargetConnectionStrings = [],
+        });
+
+        var vm = new ConnectionPageViewModel();
+
+        Assert.Equal(2, vm.SourceHistory.Count);
+        // Свежайшая из совпавших по регистру записей («Encrypt=False» стоит в файле первым).
+        Assert.Single(
+            vm.SourceHistory,
+            e =>
+                string.Equals(e.DisplayName, "localhost / SourceDb", StringComparison.OrdinalIgnoreCase)
+                && e.ConnectionString == "Server=LOCALHOST;Database=SOURCEDB;Encrypt=False"
+        );
+        Assert.Single(vm.SourceHistory, e => e.DisplayName == "other / OtherDb");
+    }
 }
 
 /// <summary>
