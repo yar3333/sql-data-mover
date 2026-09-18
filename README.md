@@ -28,6 +28,11 @@ the top-right corner of the window; the choice is remembered. ([Русская �
 - **Foreign key substitution**: when dependent tables are copied, the new parent IDs are
   automatically substituted into the child FK columns. Tables are copied in dependency order
   (parents before children), including self-referencing tables (two-phase processing).
+- **Temporary duplicate unique values**: for tables with unique columns, the target's unique
+  indexes (except the primary key) can be disabled for the duration of each table copy and
+  rebuilt before the transaction commits. Use when a unique field is temporarily duplicated
+  during the copy (e.g. a new row is inserted with a value a stale row still holds and releases
+  on a later update). Requires ALTER permission on the target tables.
 - Per-table and per-row progress, an operation log, and copy cancellation.
 - Dark/light theme following the system.
 
@@ -120,7 +125,11 @@ If `Encrypt` and `TrustServerCertificate` are not specified, the app adds `Encry
 4. When a child table is copied, its FK columns are replaced with the new IDs from the mapping.
    Self-referencing FKs are filled in a second pass (`UPDATE`).
 5. Each table is copied in its own transaction: on error its changes are rolled back and the
-   remaining tables continue.
+   remaining tables continue. If the "Allow temporary duplicate unique values" option is on,
+   the target's unique indexes (except the primary key) are disabled at the start of the copy
+   and rebuilt before the transaction commits — so a transient duplicate of a unique value
+   (a new row inserted before a stale row is updated to release the value) does not fail the
+   copy. Real duplicates left at the end fail the rebuild, and the table's transaction rolls back.
 
 ## Project structure
 

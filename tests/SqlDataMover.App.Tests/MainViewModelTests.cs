@@ -683,6 +683,19 @@ internal sealed class GatedProvider : IDbProvider
     public Task<long> GetIdentityCurrentAsync(DbObjectName table, CancellationToken ct = default) =>
         _inner.GetIdentityCurrentAsync(table, ct);
 
+    public Task<IReadOnlyList<string>> GetUniqueIndexesAsync(
+        DbObjectName table,
+        CancellationToken ct = default
+    ) => _inner.GetUniqueIndexesAsync(table, ct);
+
+    public Task SetUniqueIndexEnabledAsync(
+        DbObjectName table,
+        string indexName,
+        bool enabled,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    ) => _inner.SetUniqueIndexEnabledAsync(table, indexName, enabled, transaction, ct);
+
     public Task ReseedIdentityAsync(
         DbObjectName table,
         long newValue,

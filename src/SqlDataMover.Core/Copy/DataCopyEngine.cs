@@ -87,9 +87,22 @@ public sealed class DataCopyEngine
                     )
                 );
 
+                // Опция «разрешить временное задвоение уникальных значений»: уникальные индексы
+                // приёмника (кроме PK) на время копирования отключаются и пересоздаются перед
+                // коммитом. Транзиентный конфликт (строка со значением вставлена раньше, чем
+                // обновление освободило его у существующей строки) перестаёт быть ошибкой;
+                // реальные дубликаты уронят REBUILD, и транзакция откатится.
+                var uniqueIndexes =
+                    !dryRun && _settings.AllowTemporaryUniqueDuplicates
+                        ? await _target.GetUniqueIndexesAsync(table, ct)
+                        : [];
+
                 await using IDbWriteTransaction? tx = dryRun
                     ? null
                     : await _target.BeginTransactionAsync(ct);
+                foreach (var index in uniqueIndexes)
+                    await _target.SetUniqueIndexEnabledAsync(table, index, false, tx, ct);
+
                 await CopyTableAsync(
                     cfg,
                     sourceDetails[table],
@@ -101,7 +114,11 @@ public sealed class DataCopyEngine
                     ct
                 );
                 if (!dryRun)
+                {
+                    foreach (var index in uniqueIndexes)
+                        await _target.SetUniqueIndexEnabledAsync(table, index, true, tx, ct);
                     await tx!.CommitAsync(ct);
+                }
 
                 Report(
                     new CopyProgress(

@@ -485,6 +485,52 @@ public sealed class SqlServerProvider : IDbProvider
         return value is null or DBNull ? 0 : Convert.ToInt64(value);
     }
 
+    public async Task<IReadOnlyList<string>> GetUniqueIndexesAsync(
+        DbObjectName table,
+        CancellationToken ct = default
+    )
+    {
+        const string sql = """
+            SELECT i.name
+            FROM sys.indexes i
+            WHERE i.object_id = OBJECT_ID(@name)
+              AND i.is_unique = 1
+              AND i.is_primary_key = 0
+              AND i.name IS NOT NULL
+            ORDER BY i.name
+            """;
+
+        var names = new List<string>();
+        await using var cmd = new SqlCommand(sql, _connection);
+        cmd.Parameters.AddWithValue("@name", table.ToString());
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+            names.Add(reader.GetString(0));
+
+        return names;
+    }
+
+    public async Task SetUniqueIndexEnabledAsync(
+        DbObjectName table,
+        string indexName,
+        bool enabled,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    )
+    {
+        // DISABLE снимает проверку уникальности на время копирования; REBUILD пересоздаёт
+        // индекс и перепроверяет данные (транзиентных дублей уже нет, реальные — уронят транзакцию).
+        await using var cmd = new SqlCommand
+        {
+            Connection = _connection,
+            Transaction = GetSqlTransaction(transaction),
+            CommandText = enabled
+                ? $"ALTER INDEX {Quote(indexName)} ON {QuoteTable(table)} REBUILD"
+                : $"ALTER INDEX {Quote(indexName)} ON {QuoteTable(table)} DISABLE",
+        };
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
     public async Task ReseedIdentityAsync(
         DbObjectName table,
         long newValue,

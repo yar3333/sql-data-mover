@@ -77,13 +77,17 @@
         <!-- Копирование -->
         <Border DockPanel.Dock="Bottom" Classes="card" Padding="12" Margin="0,12,0,0">
             <StackPanel Spacing="10">
-                <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
                     <Button Content="{Binding StartCopy, Source={x:Static loc:AppStrings.Current}}" Command="{Binding StartCopyCommand}" Classes="primary"
                             IsEnabled="{Binding CanStartCopy}"/>
                     <Button Grid.Column="1" Content="{Binding Cancel, Source={x:Static loc:AppStrings.Current}}" Command="{Binding CancelCopyCommand}" Margin="10,0,0,0"/>
-                    <TextBlock Grid.Column="2" Text="{Binding CurrentTable}" VerticalAlignment="Center"
+                    <CheckBox Grid.Column="2" Content="{Binding AllowTemporaryUniqueDuplicates, Source={x:Static loc:AppStrings.Current}}"
+                              IsChecked="{Binding AllowTemporaryUniqueDuplicates}"
+                              ToolTip.Tip="{Binding AllowTemporaryUniqueDuplicatesToolTip, Source={x:Static loc:AppStrings.Current}}"
+                              VerticalAlignment="Center" Margin="16,0,0,0"/>
+                    <TextBlock Grid.Column="3" Text="{Binding CurrentTable}" VerticalAlignment="Center"
                                Margin="16,0,0,0" TextWrapping="Wrap"/>
-                    <TextBlock Grid.Column="3" Text="{Binding ProcessedRowsText}"
+                    <TextBlock Grid.Column="4" Text="{Binding ProcessedRowsText}"
                                VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}"/>
                 </Grid>
                 <ProgressBar Height="6" Maximum="100" Value="{Binding ProgressPercent}"

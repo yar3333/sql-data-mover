@@ -50,6 +50,23 @@ public class DataCopyEngineTests
         return table;
     }
 
+    /// <summary>Таблица Customers с уникальным полем Name (уникальный индекс UQ_Name).</summary>
+    private static FakeTable UniqueCustomerTable(params object?[][] rows)
+    {
+        var table = new FakeTable
+        {
+            Meta = TestTables.Table(
+                "dbo",
+                "Customers",
+                [TestTables.Col("Id", identity: true, pk: true), TestTables.Col("Name")]
+            ),
+        };
+        table.UniqueColumns.Add("Name");
+        foreach (var row in rows)
+            table.Rows.Add(row);
+        return table;
+    }
+
     private static TableCopyConfig Config(DbObjectName table, params string[] matchColumns) =>
         new() { Table = table, MatchColumns = matchColumns };
 
@@ -903,5 +920,61 @@ public class DataCopyEngineTests
         {
             CoreStrings.Language = "en";
         }
+    }
+
+    [Fact]
+    public async Task Unique_index_temporary_duplicate_fails_table_by_default()
+    {
+        // Уникальное поле Name. В приёмнике устаревшая строка (Id=1, Name="BBB"), источник:
+        // строка (2, "BBB") вставляется раньше, чем обновление строки 1 освободит значение
+        // "BBB" → вставка роняет уникальный индекс. Без опции таблица падает.
+        var source = new FakeProvider(
+            UniqueCustomerTable([new object?[] { 2, "BBB" }, new object?[] { 1, "AAA" }])
+        );
+        var target = new FakeProvider(UniqueCustomerTable([new object?[] { 1, "BBB" }]));
+
+        var engine = new DataCopyEngine(source, target);
+        var result = await engine.CopyAsync([Config(Customers, "Id")], CancellationToken.None);
+
+        var customersResult = result.Tables.Single(t => t.Table == Customers);
+        Assert.False(customersResult.Success);
+        Assert.Contains("UNIQUE constraint violation", customersResult.Error);
+        // Ничего не вставлено и не обновлено.
+        Assert.Single(target.GetTable(Customers).Rows);
+    }
+
+    [Fact]
+    public async Task AllowTemporaryUniqueDuplicates_lets_temporary_duplicate_pass_and_rebuilds_index()
+    {
+        // Та же ситуация, что и в тесте выше, но с включённой опцией: уникальный индекс приёмника
+        // отключается на время копирования, транзиентное задвоение проходит, а после обновления
+        // дубликатов в данных нет.
+        var source = new FakeProvider(
+            UniqueCustomerTable([new object?[] { 2, "BBB" }, new object?[] { 1, "AAA" }])
+        );
+        var target = new FakeProvider(UniqueCustomerTable([new object?[] { 1, "BBB" }]));
+
+        var engine = new DataCopyEngine(
+            source,
+            target,
+            new CopySettings { AllowTemporaryUniqueDuplicates = true }
+        );
+        var result = await engine.CopyAsync([Config(Customers, "Id")], CancellationToken.None);
+
+        Assert.True(
+            result.Success,
+            string.Join("; ", result.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        var customersResult = result.Tables.Single(t => t.Table == Customers);
+        Assert.Equal(1, customersResult.Inserted);
+        Assert.Equal(1, customersResult.Updated);
+
+        // Итоговые данные без дубликатов: строка 1 обновлена (BBB → AAA), строка 2 вставлена (BBB).
+        var rows = target.GetTable(Customers).Rows;
+        Assert.Equal(2, rows.Count);
+        Assert.Equal("AAA", rows.Single(r => Equals(r[0], 1))[1]);
+        Assert.Equal("BBB", rows.Single(r => Equals(r[0], 2))[1]);
+        Assert.Single(rows, r => Equals(r[1], "BBB"));
     }
 }

@@ -157,6 +157,16 @@ public sealed class AppStrings : INotifyPropertyChanged
     public string Cancel => T("Cancel", "Отмена");
     public string RowsWord => T("Rows", "Строк");
     public string LogTitle => T("Log", "Журнал");
+    public string AllowTemporaryUniqueDuplicates =>
+        T(
+            "Allow temporary duplicate values in unique columns during copy",
+            "Разрешить временное задвоение уникальных значений при копировании"
+        );
+    public string AllowTemporaryUniqueDuplicatesToolTip =>
+        T(
+            "Disables the target's unique indexes (except the primary key) for the duration of each table copy and rebuilds them before the transaction commits. Use when a unique field is temporarily duplicated during the copy (e.g. a new row is inserted with a value that a stale row still holds and will release on update). Requires ALTER permission on the target tables.",
+            "Уникальные индексы приёмника (кроме первичного ключа) отключаются на время копирования таблицы и пересоздаются перед коммитом транзакции. Включайте, если во время копирования возникает временное задвоение уникального поля (например, новая строка вставляется со значением, которое ещё не освободила обновляемая устаревшая строка). Требует права ALTER на таблицы приёмника."
+        );
 
     public string FormatPreviewSummary(int tableCount, long toInsert, long toUpdate) =>
         string.Format(

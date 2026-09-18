@@ -11,6 +11,9 @@ public sealed class FakeProvider : IDbProvider
     private readonly Dictionary<DbObjectName, FakeTable> _tables = [];
     private readonly bool _failOnConnect;
 
+    /// <summary>Уникальные колонки (по одной на «индекс»), для которых временно отключена проверка уникальности.</summary>
+    private readonly HashSet<(DbObjectName Table, string Column)> _disabledUnique = [];
+
     public string Name => "Fake";
     public bool IsConnected => true;
 
@@ -106,16 +109,61 @@ public sealed class FakeProvider : IDbProvider
     {
         var ft = _tables[table.Name];
         var ids = new List<object?>(rows.Count);
+        var insertedThisBatch = new List<object?[]>(rows.Count);
 
         foreach (var row in rows)
         {
+            CheckUniqueConstraints(table.Name, ft, columns, row, insertedThisBatch);
+
             var values = ft.NewRow(columns, row);
             ft.Rows.Add(values);
+            insertedThisBatch.Add(values);
             if (ft.Meta.IdentityColumn is { } identity)
                 ids.Add(values[ft.ColumnIndex(identity)]);
         }
 
         return Task.FromResult<IReadOnlyList<object?>>(ids);
+    }
+
+    /// <summary>
+    /// Имитация уникального ограничения: если для уникальной колонки не включён режим
+    /// временного отключения (<see cref="SetUniqueIndexEnabledAsync"/>), повторное значение
+    /// среди уже существующих строк (или среди строк этого же пакета) считается нарушением.
+    /// </summary>
+    private void CheckUniqueConstraints(
+        DbObjectName table,
+        FakeTable ft,
+        IReadOnlyList<string> columns,
+        object?[] row,
+        IReadOnlyList<object?[]> insertedThisBatch
+    )
+    {
+        foreach (var uniqueColumn in ft.UniqueColumns)
+        {
+            if (_disabledUnique.Contains((table, uniqueColumn)))
+                continue;
+
+            var columnIndex = IndexIn(columns, uniqueColumn);
+            if (columnIndex < 0)
+                continue;
+
+            var value = row[columnIndex];
+            if (value is null)
+                continue;
+
+            var tableIndex = ft.ColumnIndex(uniqueColumn);
+            var exists = ft.Rows.Any(r =>
+                r[tableIndex] is not null
+                && ObjectKeyComparer.Instance.Equals(r[tableIndex], value)
+            );
+            exists |= insertedThisBatch.Any(r =>
+                r[tableIndex] is not null && ObjectKeyComparer.Instance.Equals(r[tableIndex], value)
+            );
+            if (exists)
+                throw new InvalidOperationException(
+                    $"UNIQUE constraint violation: value '{value}' already exists in {table}.{uniqueColumn}"
+                );
+        }
     }
 
     public Task<int> UpdateRowsAsync(
@@ -203,6 +251,35 @@ public sealed class FakeProvider : IDbProvider
         );
     }
 
+    public Task<IReadOnlyList<string>> GetUniqueIndexesAsync(
+        DbObjectName table,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<string>>(
+            _tables[table].UniqueColumns.Select(c => "UQ_" + c).ToList()
+        );
+
+    public Task SetUniqueIndexEnabledAsync(
+        DbObjectName table,
+        string indexName,
+        bool enabled,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    )
+    {
+        const string prefix = "UQ_";
+        if (!indexName.StartsWith(prefix, StringComparison.Ordinal))
+            throw new ArgumentException($"Unknown unique index: {indexName}", nameof(indexName));
+
+        var column = indexName[prefix.Length..];
+        var key = (table, column);
+        if (enabled)
+            _disabledUnique.Remove(key);
+        else
+            _disabledUnique.Add(key);
+        return Task.CompletedTask;
+    }
+
     public Task ReseedIdentityAsync(
         DbObjectName table,
         long newValue,
@@ -242,6 +319,9 @@ public sealed class FakeTable
 
     /// <summary>Отмечает, что движок включил режим IDENTITY_INSERT (для проверки в тестах).</summary>
     public bool IdentityInsertEnabled { get; set; }
+
+    /// <summary>Уникальные колонки таблицы (по одной на «уникальный индекс» UQ_&lt;колонка&gt;).</summary>
+    public List<string> UniqueColumns { get; } = [];
 
     public int ColumnIndex(string name)
     {

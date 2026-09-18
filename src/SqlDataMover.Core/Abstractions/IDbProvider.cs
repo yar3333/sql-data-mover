@@ -95,8 +95,32 @@ public interface IDbProvider : IAsyncDisposable
         CancellationToken ct = default
     );
 
-    /// <summary>Текущее значение счётчика identity (IDENT_CURRENT) таблицы — для выравнивания счётчика приёмника.</summary>
+    /// <summary>
+    /// Текущее значение счётчика identity (IDENT_CURRENT) таблицы — для выравнивания счётчика приёмника.
+    /// </summary>
     Task<long> GetIdentityCurrentAsync(DbObjectName table, CancellationToken ct = default);
+
+    /// <summary>
+    /// Имена уникальных индексов (включая индексы уникальных ограничений) таблицы, кроме первичного
+    /// ключа. Используется для временного отключения проверки уникальности на время копирования
+    /// (<see cref="SetUniqueIndexEnabledAsync"/>).
+    /// </summary>
+    Task<IReadOnlyList<string>> GetUniqueIndexesAsync(
+        DbObjectName table,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// Включает или выключает уникальный индекс (в SQL Server — ALTER INDEX ... DISABLE / REBUILD).
+    /// Вызывается в контексте транзакции записи.
+    /// </summary>
+    Task SetUniqueIndexEnabledAsync(
+        DbObjectName table,
+        string indexName,
+        bool enabled,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    );
 
     /// <summary>
     /// Устанавливает счётчик identity таблицы (DBCC CHECKIDENT RESEED), чтобы приёмник продолжал

@@ -55,6 +55,13 @@ public partial class PreviewPageViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool CanStartCopy { get; set; } = true;
 
+    /// <summary>
+    /// Разрешить временное задвоение уникальных значений: уникальные индексы приёмника
+    /// отключаются на время копирования таблицы и пересоздаются перед коммитом.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool AllowTemporaryUniqueDuplicates { get; set; }
+
     [ObservableProperty]
     public partial string CurrentTable { get; set; } = "";
 
@@ -225,7 +232,7 @@ public partial class PreviewPageViewModel : ViewModelBase
             var engine = new DataCopyEngine(
                 _source,
                 _target,
-                new CopySettings { BatchSize = 500 },
+                new CopySettings { BatchSize = 500, AllowTemporaryUniqueDuplicates = AllowTemporaryUniqueDuplicates },
                 progress
             );
             var result = await engine.CopyAsync(_configs, _cts.Token);
