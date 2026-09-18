@@ -142,6 +142,39 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public async Task Preview_with_delete_extra_rows_reports_deleted_count()
+    {
+        // В приёмнике есть лишняя строка (30, LEGACY), отсутствующая в источнике.
+        // С включённой опцией предпросмотр показывает её к удалению и не пишет в приёмник.
+        var vm = SetupWizard(
+            "fake-del",
+            new FakeProvider(WizardData.CustomerTable([new object?[] { 10, "Alice" }])),
+            new FakeProvider(
+                WizardData.CustomerTable([
+                    new object?[] { 10, "OLD" },
+                    new object?[] { 30, "LEGACY" },
+                ])
+            )
+        );
+
+        await vm.Connection.ConnectCommand.ExecuteAsync(null);
+        vm.Tables.Schemas[0].AllTables[0].IsChecked = true;
+        await vm.GoNextCommand.ExecuteAsync(null); // → выбор таблиц
+        await vm.GoNextCommand.ExecuteAsync(null); // → сопоставление
+        vm.Preview.DeleteExtraRows = true;
+        await vm.GoNextCommand.ExecuteAsync(null); // → предпросмотр с опцией
+
+        var row = Assert.Single(vm.Preview.Tables);
+        Assert.Equal(0, row.Inserted);
+        Assert.Equal(1, row.Updated);
+        Assert.Equal(1, row.Deleted);
+        Assert.Contains("rows to delete: 1", vm.Preview.PreviewSummary);
+        // Приёмник не изменён: запись в предпросмотре не выполнялась.
+        var customers = (FakeProvider)vm.Connection.Target!;
+        Assert.Equal(2, customers.GetTable(new DbObjectName("dbo", "Customers")).Rows.Count);
+    }
+
+    [Fact]
     public async Task Connect_failure_shows_error_and_keeps_next_disabled()
     {
         DbProviderFactory.Register(
@@ -692,6 +725,14 @@ internal sealed class GatedProvider : IDbProvider
             transaction,
             ct
         );
+
+    public Task<int> DeleteRowsAsync(
+        DbObjectName table,
+        IReadOnlyList<string> whereColumns,
+        IReadOnlyList<object?[]> keys,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    ) => _inner.DeleteRowsAsync(table, whereColumns, keys, transaction, ct);
 
     public Task<int> ExecuteUpdatesAsync(
         DbTable table,

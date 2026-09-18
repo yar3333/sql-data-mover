@@ -11,6 +11,9 @@ public sealed class CompositeKey : IEquatable<CompositeKey>
 
     public CompositeKey(IEnumerable<object?> values) => _values = values.ToArray();
 
+    /// <summary>Значения компонентов ключа в порядке полей сопоставления.</summary>
+    public IReadOnlyList<object?> Values => _values;
+
     public bool Equals(CompositeKey? other)
     {
         if (other is null || other._values.Length != _values.Length)

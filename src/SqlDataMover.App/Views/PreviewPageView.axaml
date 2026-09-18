@@ -27,7 +27,7 @@
 
                 <StackPanel Spacing="8" IsVisible="{Binding !IsBusy}">
                     <Grid RowDefinitions="Auto,*" IsVisible="{Binding HasPreview}">
-                        <Grid ColumnDefinitions="*,150,150,150,*">
+                        <Grid ColumnDefinitions="*,150,150,150,150,*">
                             <TextBlock Text="{Binding TableHeader, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold" Margin="4,0,0,4"
                                        Foreground="{DynamicResource TextMutedBrush}"/>
                             <TextBlock Grid.Column="1" Text="{Binding ReadHeader, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold" Margin="4,0,0,4"
@@ -36,7 +36,9 @@
                                        Foreground="{DynamicResource TextMutedBrush}" TextAlignment="Right"/>
                             <TextBlock Grid.Column="3" Text="{Binding UpdatedHeader, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold" Margin="4,0,0,4"
                                        Foreground="{DynamicResource TextMutedBrush}" TextAlignment="Right"/>
-                            <TextBlock Grid.Column="4" Text="{Binding StatusHeader, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold" Margin="8,0,0,4"
+                            <TextBlock Grid.Column="4" Text="{Binding DeletedHeader, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold" Margin="4,0,0,4"
+                                       Foreground="{DynamicResource TextMutedBrush}" TextAlignment="Right"/>
+                            <TextBlock Grid.Column="5" Text="{Binding StatusHeader, Source={x:Static loc:AppStrings.Current}}" FontWeight="SemiBold" Margin="8,0,0,4"
                                        Foreground="{DynamicResource TextMutedBrush}"/>
                         </Grid>
 
@@ -44,7 +46,7 @@
                             <ItemsControl ItemsSource="{Binding Tables}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate DataType="vm:PreviewTableRow">
-                                        <Grid ColumnDefinitions="*,150,150,150,*" MinHeight="26">
+                                        <Grid ColumnDefinitions="*,150,150,150,150,*" MinHeight="26">
                                             <TextBlock Text="{Binding Display}" VerticalAlignment="Center" Margin="4,0,0,0"/>
                                             <TextBlock Grid.Column="1" Text="{Binding RowsRead, StringFormat='{}{0:N0}'}"
                                                        TextAlignment="Right" VerticalAlignment="Center"/>
@@ -53,10 +55,13 @@
                                                        Foreground="{DynamicResource SuccessBrush}"/>
                                             <TextBlock Grid.Column="3" Text="{Binding Updated, StringFormat='{}{0:N0}'}"
                                                        TextAlignment="Right" VerticalAlignment="Center"/>
-                                            <TextBlock Grid.Column="4" Text="✓" VerticalAlignment="Center" Margin="8,0,0,0"
+                                            <TextBlock Grid.Column="4" Text="{Binding Deleted, StringFormat='{}{0:N0}'}"
+                                                       TextAlignment="Right" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource DangerBrush}"/>
+                                            <TextBlock Grid.Column="5" Text="✓" VerticalAlignment="Center" Margin="8,0,0,0"
                                                        Foreground="{DynamicResource SuccessBrush}"
                                                        IsVisible="{Binding !HasError}"/>
-                                            <TextBlock Grid.Column="4" Text="{Binding Error}" VerticalAlignment="Center"
+                                            <TextBlock Grid.Column="5" Text="{Binding Error}" VerticalAlignment="Center"
                                                        Margin="8,0,0,0" Foreground="{DynamicResource DangerBrush}"
                                                        TextWrapping="Wrap" IsVisible="{Binding HasError}"/>
                                         </Grid>
@@ -81,10 +86,14 @@
                     <Button Content="{Binding StartCopy, Source={x:Static loc:AppStrings.Current}}" Command="{Binding StartCopyCommand}" Classes="primary"
                             IsEnabled="{Binding CanStartCopy}"/>
                     <Button Grid.Column="1" Content="{Binding Cancel, Source={x:Static loc:AppStrings.Current}}" Command="{Binding CancelCopyCommand}" Margin="10,0,0,0"/>
-                    <CheckBox Grid.Column="2" Content="{Binding AllowTemporaryUniqueDuplicates, Source={x:Static loc:AppStrings.Current}}"
-                              IsChecked="{Binding AllowTemporaryUniqueDuplicates}"
-                              ToolTip.Tip="{Binding AllowTemporaryUniqueDuplicatesToolTip, Source={x:Static loc:AppStrings.Current}}"
-                              VerticalAlignment="Center" Margin="16,0,0,0"/>
+                    <StackPanel Grid.Column="2" Spacing="4" VerticalAlignment="Center" Margin="16,0,0,0">
+                        <CheckBox Content="{Binding AllowTemporaryUniqueDuplicates, Source={x:Static loc:AppStrings.Current}}"
+                                  IsChecked="{Binding AllowTemporaryUniqueDuplicates}"
+                                  ToolTip.Tip="{Binding AllowTemporaryUniqueDuplicatesToolTip, Source={x:Static loc:AppStrings.Current}}"/>
+                        <CheckBox Content="{Binding DeleteExtraRows, Source={x:Static loc:AppStrings.Current}}"
+                                  IsChecked="{Binding DeleteExtraRows}"
+                                  ToolTip.Tip="{Binding DeleteExtraRowsToolTip, Source={x:Static loc:AppStrings.Current}}"/>
+                    </StackPanel>
                     <TextBlock Grid.Column="3" Text="{Binding CurrentTable}" VerticalAlignment="Center"
                                Margin="16,0,0,0" TextWrapping="Wrap"/>
                     <TextBlock Grid.Column="4" Text="{Binding ProcessedRowsText}"

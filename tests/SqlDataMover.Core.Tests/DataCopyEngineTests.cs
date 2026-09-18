@@ -812,6 +812,7 @@ public class DataCopyEngineTests
             Assert.Equal(real.RowsRead, dry.RowsRead);
             Assert.Equal(real.Inserted, dry.Inserted);
             Assert.Equal(real.Updated, dry.Updated);
+            Assert.Equal(real.Deleted, dry.Deleted);
             Assert.Equal(real.Mapped, dry.Mapped);
         }
 
@@ -976,5 +977,195 @@ public class DataCopyEngineTests
         Assert.Equal("AAA", rows.Single(r => Equals(r[0], 1))[1]);
         Assert.Equal("BBB", rows.Single(r => Equals(r[0], 2))[1]);
         Assert.Single(rows, r => Equals(r[1], "BBB"));
+    }
+
+    [Fact]
+    public async Task Copy_deletes_extra_target_rows_when_option_is_enabled()
+    {
+        // Источник: клиенты (10, "A") и (20, "B"). Приёмник: (10, "OLD") — совпадёт,
+        // и (30, "LEGACY") — лишняя (в источнике отсутствует). С опцией лишняя удаляется
+        // до вставки/обновления, совпавшая обновляется, отсутствующая вставляется.
+        var source = new FakeProvider(
+            CustomerTable([new object?[] { 10, "A" }, new object?[] { 20, "B" }])
+        );
+        var target = new FakeProvider(
+            CustomerTable([new object?[] { 10, "OLD" }, new object?[] { 30, "LEGACY" }])
+        );
+
+        var engine = new DataCopyEngine(
+            source,
+            target,
+            new CopySettings { DeleteExtraRows = true }
+        );
+        var result = await engine.CopyAsync([Config(Customers, "Id")], CancellationToken.None);
+
+        Assert.True(
+            result.Success,
+            string.Join("; ", result.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        var customersResult = result.Tables.Single(t => t.Table == Customers);
+        Assert.Equal(1, customersResult.Deleted);
+        Assert.Equal(1, customersResult.Updated);
+        Assert.Equal(1, customersResult.Inserted);
+
+        var rows = target.GetTable(Customers).Rows;
+        Assert.Equal(2, rows.Count);
+        Assert.DoesNotContain(rows, r => Equals(r[0], 30));
+        Assert.Equal("A", rows.Single(r => Equals(r[0], 10))[1]);
+        Assert.Equal("B", rows.Single(r => Equals(r[0], 20))[1]);
+    }
+
+    [Fact]
+    public async Task Copy_keeps_extra_target_rows_by_default()
+    {
+        // Без опции лишние строки приёмника не удаляются.
+        var source = new FakeProvider(CustomerTable([new object?[] { 10, "A" }]));
+        var target = new FakeProvider(
+            CustomerTable([new object?[] { 10, "OLD" }, new object?[] { 30, "LEGACY" }])
+        );
+
+        var engine = new DataCopyEngine(source, target);
+        var result = await engine.CopyAsync([Config(Customers, "Id")], CancellationToken.None);
+
+        Assert.True(
+            result.Success,
+            string.Join("; ", result.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        var customersResult = result.Tables.Single(t => t.Table == Customers);
+        Assert.Equal(0, customersResult.Deleted);
+        Assert.Equal(2, target.GetTable(Customers).Rows.Count);
+    }
+
+    [Fact]
+    public async Task Copy_deletes_extra_children_before_extra_parents()
+    {
+        // Приёмник: лишний клиент (30) и лишний заказ (2), ссылающийся на него. Удаление
+        // идёт в обратном топологическом порядке (дети раньше родителей), чтобы не нарушить
+        // внешний ключ. В реальной СУБД прямое удаление родителя упало бы из-за FK-ссылки.
+        var source = new FakeProvider(
+            CustomerTable([new object?[] { 10, "A" }]),
+            OrderTable([new object?[] { 1, 10 }])
+        );
+        var target = new FakeProvider(
+            CustomerTable([new object?[] { 10, "OLD" }, new object?[] { 30, "LEGACY" }]),
+            OrderTable([new object?[] { 1, 10 }, new object?[] { 2, 30 }])
+        );
+
+        var engine = new DataCopyEngine(
+            source,
+            target,
+            new CopySettings { DeleteExtraRows = true }
+        );
+        var result = await engine.CopyAsync(
+            [Config(Customers, "Id"), Config(Orders, "Id")],
+            CancellationToken.None
+        );
+
+        Assert.True(
+            result.Success,
+            string.Join("; ", result.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        Assert.Equal(1, result.Tables.Single(t => t.Table == Customers).Deleted);
+        Assert.Equal(1, result.Tables.Single(t => t.Table == Orders).Deleted);
+        // В приёмнике остались только строки источника.
+        Assert.Single(target.GetTable(Customers).Rows);
+        Assert.Single(target.GetTable(Orders).Rows);
+    }
+
+    [Fact]
+    public async Task DryRun_counts_extra_rows_without_writing()
+    {
+        var source = new FakeProvider(CustomerTable([new object?[] { 10, "A" }]));
+        var target = new FakeProvider(
+            CustomerTable([new object?[] { 10, "OLD" }, new object?[] { 30, "LEGACY" }])
+        );
+
+        var engine = new DataCopyEngine(
+            source,
+            target,
+            new CopySettings { DryRun = true, DeleteExtraRows = true }
+        );
+        var result = await engine.CopyAsync([Config(Customers, "Id")], CancellationToken.None);
+
+        Assert.True(
+            result.Success,
+            string.Join("; ", result.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        var customersResult = result.Tables.Single(t => t.Table == Customers);
+        Assert.Equal(1, customersResult.Deleted);
+        Assert.Equal(1, customersResult.Updated);
+        // Запись не выполнялась: обе строки приёмника на месте.
+        Assert.Equal(2, target.GetTable(Customers).Rows.Count);
+    }
+
+    [Fact]
+    public async Task DryRun_deleted_counts_match_real_run()
+    {
+        static (FakeProvider Source, FakeProvider Target) Build()
+        {
+            var source = new FakeProvider(
+                CustomerTable([
+                    new object?[] { 10, "A" },
+                    new object?[] { 20, "B" },
+                    new object?[] { 30, "C" },
+                ]),
+                OrderTable([
+                    new object?[] { 1, 10 },
+                    new object?[] { 2, 20 },
+                    new object?[] { 3, 30 },
+                    new object?[] { 4, 10 },
+                ])
+            );
+            var target = new FakeProvider(
+                CustomerTable([new object?[] { 10, "OLD" }, new object?[] { 40, "LEGACY" }]),
+                OrderTable([new object?[] { 1, 10 }, new object?[] { 9, 40 }])
+            );
+            return (source, target);
+        }
+
+        var configs = new[] { Config(Customers, "Id"), Config(Orders, "Id") };
+
+        var (srcDry, tgtDry) = Build();
+        var dryResult = await new DataCopyEngine(
+            srcDry,
+            tgtDry,
+            new CopySettings { DryRun = true, DeleteExtraRows = true }
+        ).CopyAsync(configs, CancellationToken.None);
+
+        var (srcReal, tgtReal) = Build();
+        var realResult = await new DataCopyEngine(
+            srcReal,
+            tgtReal,
+            new CopySettings { DeleteExtraRows = true }
+        ).CopyAsync(configs, CancellationToken.None);
+
+        Assert.True(
+            dryResult.Success,
+            string.Join("; ", dryResult.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+        Assert.True(
+            realResult.Success,
+            string.Join("; ", realResult.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        foreach (var table in new[] { Customers, Orders })
+        {
+            var dry = dryResult.Tables.Single(t => t.Table == table);
+            var real = realResult.Tables.Single(t => t.Table == table);
+            Assert.Equal(real.RowsRead, dry.RowsRead);
+            Assert.Equal(real.Inserted, dry.Inserted);
+            Assert.Equal(real.Updated, dry.Updated);
+            Assert.Equal(real.Deleted, dry.Deleted);
+        }
+
+        // Реальный прогон удалил лишние строки (40 и 9), предпросмотр — нет.
+        Assert.Equal(3, tgtReal.GetTable(Customers).Rows.Count);
+        Assert.Equal(4, tgtReal.GetTable(Orders).Rows.Count);
+        Assert.Equal(2, tgtDry.GetTable(Customers).Rows.Count);
+        Assert.Equal(2, tgtDry.GetTable(Orders).Rows.Count);
     }
 }

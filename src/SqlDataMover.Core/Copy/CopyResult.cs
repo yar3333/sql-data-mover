@@ -10,6 +10,9 @@ public sealed class TableCopyResult
     public long Inserted { get; set; }
     public long Updated { get; set; }
 
+    /// <summary>Количество удалённых лишних строк приёмника (опция DeleteExtraRows).</summary>
+    public long Deleted { get; set; }
+
     /// <summary>Количество записанных сопоставлений «оригинальный ID → новый ID».</summary>
     public long Mapped { get; set; }
     public string? Error { get; set; }

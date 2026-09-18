@@ -16,6 +16,7 @@ public sealed class PreviewTableRow
     public long RowsRead { get; init; }
     public long Inserted { get; init; }
     public long Updated { get; init; }
+    public long Deleted { get; init; }
     public string? Error { get; init; }
     public bool HasError => Error is not null;
 }
@@ -61,6 +62,13 @@ public partial class PreviewPageViewModel : ViewModelBase
     /// </summary>
     [ObservableProperty]
     public partial bool AllowTemporaryUniqueDuplicates { get; set; }
+
+    /// <summary>
+    /// Удалять лишние записи в таблицах-получателях: строки, комбинация значений полей
+    /// сопоставления которых отсутствует в источнике, удаляются до вставки/обновления.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool DeleteExtraRows { get; set; }
 
     [ObservableProperty]
     public partial string CurrentTable { get; set; } = "";
@@ -127,7 +135,12 @@ public partial class PreviewPageViewModel : ViewModelBase
             var engine = new DataCopyEngine(
                 _source,
                 _target,
-                new CopySettings { BatchSize = 500, DryRun = true },
+                new CopySettings
+                {
+                    BatchSize = 500,
+                    DryRun = true,
+                    DeleteExtraRows = DeleteExtraRows,
+                },
                 progress
             );
             var result = await engine.CopyAsync(configs, _cts.Token);
@@ -141,6 +154,7 @@ public partial class PreviewPageViewModel : ViewModelBase
                         RowsRead = t.RowsRead,
                         Inserted = t.Inserted,
                         Updated = t.Updated,
+                        Deleted = t.Deleted,
                         Error = t.Error,
                     }
                 );
@@ -157,13 +171,21 @@ public partial class PreviewPageViewModel : ViewModelBase
             var failed = result.Tables.Count(t => !t.Success);
             var totalInserted = result.Tables.Sum(t => t.Inserted);
             var totalUpdated = result.Tables.Sum(t => t.Updated);
+            var totalDeleted = result.Tables.Sum(t => t.Deleted);
             PreviewSummary =
                 failed == 0
-                    ? AppStrings.Current.FormatPreviewSummary(
-                        result.Tables.Count,
-                        totalInserted,
-                        totalUpdated
-                    )
+                    ? DeleteExtraRows
+                        ? AppStrings.Current.FormatPreviewSummaryWithDeletes(
+                            result.Tables.Count,
+                            totalInserted,
+                            totalUpdated,
+                            totalDeleted
+                        )
+                        : AppStrings.Current.FormatPreviewSummary(
+                            result.Tables.Count,
+                            totalInserted,
+                            totalUpdated
+                        )
                     : AppStrings.Current.FormatPreviewSummaryWithErrors(
                         failed,
                         result.Tables.Count,
@@ -232,13 +254,19 @@ public partial class PreviewPageViewModel : ViewModelBase
             var engine = new DataCopyEngine(
                 _source,
                 _target,
-                new CopySettings { BatchSize = 500, AllowTemporaryUniqueDuplicates = AllowTemporaryUniqueDuplicates },
+                new CopySettings
+                {
+                    BatchSize = 500,
+                    AllowTemporaryUniqueDuplicates = AllowTemporaryUniqueDuplicates,
+                    DeleteExtraRows = DeleteExtraRows,
+                },
                 progress
             );
             var result = await engine.CopyAsync(_configs, _cts.Token);
 
             var totalInserted = result.Tables.Sum(t => t.Inserted);
             var totalUpdated = result.Tables.Sum(t => t.Updated);
+            var totalDeleted = result.Tables.Sum(t => t.Deleted);
             var failed = result.Tables.Count(t => !t.Success);
 
             if (failed == 0)
@@ -246,12 +274,20 @@ public partial class PreviewPageViewModel : ViewModelBase
 
             SummaryText =
                 failed == 0
-                    ? AppStrings.Current.FormatCopySummary(
-                        result.Elapsed.TotalSeconds,
-                        result.Tables.Count,
-                        totalInserted,
-                        totalUpdated
-                    )
+                    ? DeleteExtraRows
+                        ? AppStrings.Current.FormatCopySummaryWithDeletes(
+                            result.Elapsed.TotalSeconds,
+                            result.Tables.Count,
+                            totalInserted,
+                            totalUpdated,
+                            totalDeleted
+                        )
+                        : AppStrings.Current.FormatCopySummary(
+                            result.Elapsed.TotalSeconds,
+                            result.Tables.Count,
+                            totalInserted,
+                            totalUpdated
+                        )
                     : AppStrings.Current.FormatCopySummaryWithErrors(
                         failed,
                         result.Tables.Count,

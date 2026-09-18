@@ -147,6 +147,7 @@ public sealed class AppStrings : INotifyPropertyChanged
     public string ReadHeader => T("Read", "Прочитано");
     public string InsertedHeader => T("Inserted", "Вставлено");
     public string UpdatedHeader => T("Updated", "Обновлено");
+    public string DeletedHeader => T("Deleted", "Удалено");
     public string StatusHeader => T("Status", "Статус");
     public string NoStatsYet =>
         T(
@@ -167,6 +168,16 @@ public sealed class AppStrings : INotifyPropertyChanged
             "Disables the target's unique indexes (except the primary key) for the duration of each table copy and rebuilds them before the transaction commits. Use when a unique field is temporarily duplicated during the copy (e.g. a new row is inserted with a value that a stale row still holds and will release on update). Requires ALTER permission on the target tables.",
             "Уникальные индексы приёмника (кроме первичного ключа) отключаются на время копирования таблицы и пересоздаются перед коммитом транзакции. Включайте, если во время копирования возникает временное задвоение уникального поля (например, новая строка вставляется со значением, которое ещё не освободила обновляемая устаревшая строка). Требует права ALTER на таблицы приёмника."
         );
+    public string DeleteExtraRows =>
+        T(
+            "Delete extra rows in target tables (rows absent from the source)",
+            "Удалять лишние записи в таблицах-получателях (отсутствующие в источнике)"
+        );
+    public string DeleteExtraRowsToolTip =>
+        T(
+            "Before copying, deletes rows in each target table whose match-column values are absent from the source. Frees identity and unique values occupied by stale rows, avoiding conflicts on insert. Deletion runs before the copy, in reverse dependency order (children first), so foreign keys are not violated.",
+            "Перед копированием удаляет в каждой таблице-получателе строки, комбинация значений полей сопоставления которых отсутствует в источнике. Устаревшие строки освобождают значения identity и уникальных полей — вставка идёт без конфликтов. Удаление выполняется до копирования, в обратном порядке зависимостей (дети раньше родителей), чтобы не нарушить внешние ключи."
+        );
 
     public string FormatPreviewSummary(int tableCount, long toInsert, long toUpdate) =>
         string.Format(
@@ -177,6 +188,23 @@ public sealed class AppStrings : INotifyPropertyChanged
             tableCount,
             toInsert,
             toUpdate
+        );
+
+    public string FormatPreviewSummaryWithDeletes(
+        int tableCount,
+        long toInsert,
+        long toUpdate,
+        long toDelete
+    ) =>
+        string.Format(
+            T(
+                "Preview complete: tables {0}, rows to insert: {1:N0}, rows to update: {2:N0}, rows to delete: {3:N0}.",
+                "Предпросмотр завершён: таблиц {0}, будет вставлено {1:N0}, будет обновлено {2:N0}, будет удалено {3:N0}."
+            ),
+            tableCount,
+            toInsert,
+            toUpdate,
+            toDelete
         );
 
     public string FormatPreviewSummaryWithErrors(
@@ -229,6 +257,25 @@ public sealed class AppStrings : INotifyPropertyChanged
             tableCount,
             inserted,
             updated
+        );
+
+    public string FormatCopySummaryWithDeletes(
+        double seconds,
+        int tableCount,
+        long inserted,
+        long updated,
+        long deleted
+    ) =>
+        string.Format(
+            T(
+                "Copy completed in {0:F1} s. Tables: {1}. Inserted rows: {2:N0}, updated: {3:N0}, deleted: {4:N0}.",
+                "Копирование завершено за {0:F1} с. Таблиц: {1}. Вставлено строк: {2:N0}, обновлено: {3:N0}, удалено: {4:N0}."
+            ),
+            seconds,
+            tableCount,
+            inserted,
+            updated,
+            deleted
         );
 
     public string CopyCancelled =>

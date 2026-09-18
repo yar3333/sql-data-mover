@@ -39,16 +39,56 @@ public static class CoreStrings
             update
         );
 
-    public static string FormatTableSummary(long read, long insert, long update, long mapped) =>
+    public static string FormatTableSummary(
+        long read,
+        long insert,
+        long update,
+        long mapped,
+        long deleted = 0
+    ) =>
         string.Format(
             T(
-                "Done: {0:N0} rows read, {1:N0} inserted, {2:N0} updated, {3:N0} IDs mapped",
-                "Готово: строк {0:N0}, вставлено {1:N0}, обновлено {2:N0}, сопоставлено ID {3:N0}"
+                deleted > 0
+                    ? "Done: {0:N0} rows read, {1:N0} inserted, {2:N0} updated, {3:N0} IDs mapped, {4:N0} deleted"
+                    : "Done: {0:N0} rows read, {1:N0} inserted, {2:N0} updated, {3:N0} IDs mapped",
+                deleted > 0
+                    ? "Готово: строк {0:N0}, вставлено {1:N0}, обновлено {2:N0}, сопоставлено ID {3:N0}, удалено {4:N0}"
+                    : "Готово: строк {0:N0}, вставлено {1:N0}, обновлено {2:N0}, сопоставлено ID {3:N0}"
             ),
             read,
             insert,
             update,
-            mapped
+            mapped,
+            deleted
+        );
+
+    public static string FormatDeletingTable(string table) =>
+        string.Format(T("Deleting extra rows in {0}...", "Удаление лишних строк в {0}..."), table);
+
+    public static string FormatPreviewDeletingTable(string table) =>
+        string.Format(
+            T("Looking for extra rows in {0}...", "Поиск лишних строк в {0}..."),
+            table
+        );
+
+    public static string FormatExtraRowsDeleted(string table, long count) =>
+        string.Format(
+            T(
+                "Extra rows deleted from {0}: {1:N0}",
+                "Удалено лишних строк из {0}: {1:N0}"
+            ),
+            table,
+            count
+        );
+
+    public static string FormatExtraRowsToDelete(string table, long count) =>
+        string.Format(
+            T(
+                "Extra rows to delete from {0}: {1:N0}",
+                "Будет удалено лишних строк из {0}: {1:N0}"
+            ),
+            table,
+            count
         );
 
     public static string FormatRowsProcessed(long rows) =>

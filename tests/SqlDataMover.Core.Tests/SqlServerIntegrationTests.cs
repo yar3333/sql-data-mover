@@ -69,6 +69,93 @@ public class SqlServerIntegrationTests
     }
 
     [Fact]
+    public async Task Deletes_extra_target_rows_children_first_before_copy()
+    {
+        await ResetAndSeedAsync();
+
+        // «Лишние» строки в приёмнике: клиент, отсутствующий в источнике, и заказ,
+        // ссылающийся на него. С опцией DeleteExtraRows они удаляются до копирования,
+        // дети раньше родителей — иначе внешний ключ не позволил бы удалить клиента.
+        await using (var dest = new SqlConnection(DestConnectionString))
+        {
+            await dest.OpenAsync();
+            await ExecAsync(
+                dest,
+                """
+                SET IDENTITY_INSERT tests.Customers ON;
+                INSERT INTO tests.Customers (Id, Region, Code, Name) VALUES (6, 'XX', 'LEGACY', 'Legacy');
+                SET IDENTITY_INSERT tests.Customers OFF;
+
+                SET IDENTITY_INSERT tests.Orders ON;
+                INSERT INTO tests.Orders (Id, CustomerId, OrderDate) VALUES (999, 6, '2020-01-01');
+                SET IDENTITY_INSERT tests.Orders OFF;
+                """
+            );
+        }
+
+        await using var source = new SqlServerProvider(SourceConnectionString);
+        await using var target = new SqlServerProvider(DestConnectionString);
+        await source.ConnectAsync();
+        await target.ConnectAsync();
+
+        var engine = new DataCopyEngine(
+            source,
+            target,
+            new CopySettings { DeleteExtraRows = true }
+        );
+        var result = await engine.CopyAsync(
+            [
+                new TableCopyConfig { Table = Customers, MatchColumns = ["Region", "Code"] },
+                new TableCopyConfig { Table = Orders, MatchColumns = ["Id"] },
+                new TableCopyConfig { Table = OrderItems, MatchColumns = ["Id"] },
+                new TableCopyConfig { Table = Employees, MatchColumns = ["Id"] },
+            ],
+            CancellationToken.None
+        );
+
+        Assert.True(
+            result.Success,
+            string.Join("; ", result.Tables.Where(t => !t.Success).Select(t => t.Error))
+        );
+
+        // Удалены только лишние строки: клиент (XX, LEGACY) и заказ 999.
+        Assert.Equal(1, result.Tables.Single(t => t.Table == Customers).Deleted);
+        Assert.Equal(1, result.Tables.Single(t => t.Table == Orders).Deleted);
+        Assert.Equal(0, result.Tables.Single(t => t.Table == OrderItems).Deleted);
+        Assert.Equal(0, result.Tables.Single(t => t.Table == Employees).Deleted);
+
+        // Копирование после удаления идёт как обычно.
+        Assert.Equal(1, result.Tables.Single(t => t.Table == Customers).Updated);
+        Assert.Equal(1, result.Tables.Single(t => t.Table == Customers).Inserted);
+        Assert.Equal(2, result.Tables.Single(t => t.Table == Orders).Inserted);
+
+        await using var verify = new SqlConnection(DestConnectionString);
+        await verify.OpenAsync();
+
+        // Лишних строк нет, остались только данные источника.
+        Assert.Equal(2, await ScalarAsync<int>(verify, "SELECT COUNT(*) FROM tests.Customers"));
+        Assert.Equal(
+            0,
+            await ScalarAsync<int>(
+                verify,
+                "SELECT COUNT(*) FROM tests.Customers WHERE Region = 'XX'"
+            )
+        );
+        Assert.Equal(2, await ScalarAsync<int>(verify, "SELECT COUNT(*) FROM tests.Orders"));
+        // Все оставшиеся заказы ссылаются на существующих клиентов (FK не нарушен).
+        Assert.Equal(
+            2,
+            await ScalarAsync<int>(
+                verify,
+                """
+                SELECT COUNT(*) FROM tests.Orders o
+                JOIN tests.Customers c ON c.Id = o.CustomerId
+                """
+            )
+        );
+    }
+
+    [Fact]
     public async Task GetTables_lists_tables_without_syntax_errors()
     {
         // Регрессия: алиас RowCount в запросе GetTablesAsync — зарезервированное слово

@@ -206,6 +206,40 @@ public sealed class FakeProvider : IDbProvider
         return Task.FromResult(updated);
     }
 
+    public Task<int> DeleteRowsAsync(
+        DbObjectName table,
+        IReadOnlyList<string> whereColumns,
+        IReadOnlyList<object?[]> keys,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    )
+    {
+        var ft = _tables[table];
+        var indices = whereColumns.Select(c => ft.ColumnIndex(c)).ToArray();
+        int deleted = 0;
+
+        foreach (var key in keys)
+        {
+            var matches = ft.Rows
+                .Where(r =>
+                {
+                    for (var i = 0; i < indices.Length; i++)
+                        if (
+                            r[indices[i]] is null
+                            || !ObjectKeyComparer.Instance.Equals(r[indices[i]], key[i])
+                        )
+                            return false;
+                    return true;
+                })
+                .ToList();
+            deleted += matches.Count;
+            foreach (var row in matches)
+                ft.Rows.Remove(row);
+        }
+
+        return Task.FromResult(deleted);
+    }
+
     public Task<int> ExecuteUpdatesAsync(
         DbTable table,
         string setColumn,

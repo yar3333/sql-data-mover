@@ -41,7 +41,10 @@ public sealed class DataCopyEngine
             return new CopyResult { Tables = [] };
 
         var stopwatch = Stopwatch.StartNew();
-        var results = new List<TableCopyResult>(configs.Count);
+        var resultByTable = new Dictionary<DbObjectName, TableCopyResult>(configs.Count);
+        foreach (var cfg in configs)
+            resultByTable[cfg.Table] = new TableCopyResult { Table = cfg.Table };
+
         var byTable = configs.ToDictionary(c => c.Table);
         var selected = byTable.Keys.ToHashSet();
         var dryRun = _settings.DryRun;
@@ -67,12 +70,27 @@ public sealed class DataCopyEngine
         var referencedColumnsByTable = ComputeReferencedColumns(selected, sourceDetails);
         var order = TableDependencySorter.Sort(sourceDetails.Values);
 
+        // Опция «удалять лишние записи в таблицах-получателях»: строки приёмника, которых нет
+        // в источнике по полям сопоставления, удаляются до вставки/обновления — устаревшие
+        // строки освобождают значения identity и уникальных полей, и вставка не конфликтует.
+        // Удаление идёт в обратном топологическом порядке (дети раньше родителей), иначе
+        // внешний ключ не позволит удалить родителя, на которого ещё ссылаются дети.
+        if (_settings.DeleteExtraRows)
+            await DeleteExtraRowsPassAsync(
+                order,
+                byTable,
+                resultByTable,
+                sourceDetails,
+                targetDetails,
+                dryRun,
+                ct
+            );
+
         foreach (var table in order)
         {
             ct.ThrowIfCancellationRequested();
             var cfg = byTable[table];
-            var result = new TableCopyResult { Table = table };
-            results.Add(result);
+            var result = resultByTable[table];
 
             try
             {
@@ -135,7 +153,8 @@ public sealed class DataCopyEngine
                                 result.RowsRead,
                                 result.Inserted,
                                 result.Updated,
-                                result.Mapped
+                                result.Mapped,
+                                result.Deleted
                             )
                     )
                 );
@@ -172,7 +191,150 @@ public sealed class DataCopyEngine
         }
 
         stopwatch.Stop();
-        return new CopyResult { Tables = results, Elapsed = stopwatch.Elapsed };
+        // Результаты — в топологическом порядке (родители раньше детей), как раньше.
+        return new CopyResult
+        {
+            Tables = order.Select(t => resultByTable[t]).ToList(),
+            Elapsed = stopwatch.Elapsed,
+        };
+    }
+
+    private async Task DeleteExtraRowsPassAsync(
+        IReadOnlyList<DbObjectName> order,
+        IReadOnlyDictionary<DbObjectName, TableCopyConfig> byTable,
+        IReadOnlyDictionary<DbObjectName, TableCopyResult> results,
+        IReadOnlyDictionary<DbObjectName, DbTable> sourceDetails,
+        IReadOnlyDictionary<DbObjectName, DbTable> targetDetails,
+        bool dryRun,
+        CancellationToken ct
+    )
+    {
+        // Дети раньше родителей: обратный топологический порядок, иначе внешний ключ не позволит
+        // удалить строки родительской таблицы, на которые ещё ссылаются строки детей.
+        foreach (var table in order.Reverse())
+        {
+            ct.ThrowIfCancellationRequested();
+            var cfg = byTable[table];
+            var result = results[table];
+
+            try
+            {
+                Report(
+                    new CopyProgress(
+                        table,
+                        CopyStage.Copying,
+                        0,
+                        dryRun
+                            ? CoreStrings.FormatPreviewDeletingTable(table.ToString())
+                            : CoreStrings.FormatDeletingTable(table.ToString())
+                    )
+                );
+
+                await using IDbWriteTransaction? tx = dryRun
+                    ? null
+                    : await _target.BeginTransactionAsync(ct);
+
+                var deleted = await DeleteExtraRowsAsync(
+                    cfg,
+                    sourceDetails[table],
+                    targetDetails[table],
+                    tx,
+                    ct
+                );
+                result.Deleted = deleted;
+
+                if (!dryRun)
+                    await tx!.CommitAsync(ct);
+
+                Report(
+                    new CopyProgress(
+                        table,
+                        CopyStage.Copying,
+                        deleted,
+                        dryRun
+                            ? CoreStrings.FormatExtraRowsToDelete(table.ToString(), deleted)
+                            : CoreStrings.FormatExtraRowsDeleted(table.ToString(), deleted)
+                    )
+                );
+            }
+            catch (Exception ex)
+            {
+                result.Error = ex.Message;
+                Report(
+                    new CopyProgress(
+                        table,
+                        CopyStage.Failed,
+                        0,
+                        CoreStrings.FormatTableError(table.ToString(), ex.Message),
+                        IsError: true
+                    )
+                );
+                if (!_settings.ContinueOnTableError)
+                    throw;
+            }
+        }
+    }
+
+    private async Task<long> DeleteExtraRowsAsync(
+        TableCopyConfig cfg,
+        DbTable src,
+        DbTable tgt,
+        IDbWriteTransaction? tx,
+        CancellationToken ct
+    )
+    {
+        if (cfg.MatchColumns.Count == 0)
+            throw new InvalidOperationException(CoreStrings.NoMatchColumns);
+
+        foreach (var column in cfg.MatchColumns)
+        {
+            EnsureColumnExists(src, column);
+            EnsureColumnExists(tgt, column);
+        }
+
+        // Все ключи источника по полям сопоставления. Строки с NULL в любом поле исключаются:
+        // такие строки всегда вставляются, а строки приёмника с NULL-ключами не сопоставляемы
+        // и не удаляются (они могли появиться не из этой синхронизации).
+        var sourceKeys = new HashSet<CompositeKey>();
+        await foreach (var raw in _source.ReadRowsAsync(src.Name, cfg.MatchColumns, ct))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (raw.All(v => v is not null))
+                sourceKeys.Add(new CompositeKey(raw));
+        }
+
+        // Целевые ключи из словаря сопоставления; значение колонки сопоставления для определения
+        // «лишних» не нужно, но метод требует её (она же используется при копировании).
+        var identity = tgt.IdentityColumn is not null
+            ? tgt.GetColumn(tgt.IdentityColumn)!.Name
+            : null;
+        var mappedColumn =
+            identity ?? tgt.PrimaryKeyColumns.FirstOrDefault() ?? cfg.MatchColumns[0];
+        var matchMap = await _target.LoadMatchMapAsync(
+            src.Name,
+            cfg.MatchColumns,
+            mappedColumn,
+            tx,
+            ct
+        );
+
+        var extra = matchMap.Keys
+            .OfType<CompositeKey>()
+            .Where(k => !sourceKeys.Contains(k))
+            .ToList();
+        if (extra.Count == 0)
+            return 0;
+
+        if (tx is not null)
+            await _target.DeleteRowsAsync(
+                tgt.Name,
+                cfg.MatchColumns,
+                extra.Select(k => k.Values.ToArray()).ToList(),
+                tx,
+                ct
+            );
+
+        return extra.Count;
     }
 
     private async Task CopyTableAsync(

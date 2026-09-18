@@ -410,6 +410,57 @@ public sealed class SqlServerProvider : IDbProvider
         return await cmd.ExecuteNonQueryAsync(ct);
     }
 
+    public async Task<int> DeleteRowsAsync(
+        DbObjectName table,
+        IReadOnlyList<string> whereColumns,
+        IReadOnlyList<object?[]> keys,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    )
+    {
+        if (keys.Count == 0 || whereColumns.Count == 0)
+            return 0;
+
+        var deleted = 0;
+        // Ограничение SQL Server: не более 2100 параметров на запрос; берём запас до 1500.
+        var batchSize = Math.Max(1, 1500 / whereColumns.Count);
+        await using var cmd = new SqlCommand
+        {
+            Connection = _connection,
+            Transaction = GetSqlTransaction(transaction),
+        };
+
+        for (var offset = 0; offset < keys.Count; offset += batchSize)
+        {
+            var batch = keys.Skip(offset).Take(batchSize).ToList();
+            cmd.Parameters.Clear();
+
+            var sql = new StringBuilder("DELETE FROM ").Append(QuoteTable(table)).Append(" WHERE ");
+            var parameterIndex = 0;
+            for (var r = 0; r < batch.Count; r++)
+            {
+                if (r > 0)
+                    sql.Append(" OR ");
+                sql.Append('(');
+                for (var c = 0; c < whereColumns.Count; c++)
+                {
+                    if (c > 0)
+                        sql.Append(" AND ");
+                    var name = $"@p{parameterIndex}";
+                    sql.Append(Quote(whereColumns[c])).Append(" = ").Append(name);
+                    cmd.Parameters.AddWithValue(name, batch[r][c] ?? DBNull.Value);
+                    parameterIndex++;
+                }
+                sql.Append(')');
+            }
+
+            cmd.CommandText = sql.ToString();
+            deleted += await cmd.ExecuteNonQueryAsync(ct);
+        }
+
+        return deleted;
+    }
+
     public async Task<int> ExecuteUpdatesAsync(
         DbTable table,
         string setColumn,

@@ -73,6 +73,21 @@ public interface IDbProvider : IAsyncDisposable
         CancellationToken ct = default
     );
 
+    /// <summary>
+    /// Удаление строк по комбинации полей сопоставления: для каждой строки из
+    /// <paramref name="keys"/> удаляются строки, у которых значения всех
+    /// <paramref name="whereColumns"/> равны значениям ключа (AND). Ключи не содержат NULL
+    /// (строки с NULL в полях сопоставления в <see cref="LoadMatchMapAsync"/> не попадают).
+    /// Ключи передаются пакетом; реализация сама разбивает их на запросы.
+    /// </summary>
+    Task<int> DeleteRowsAsync(
+        DbObjectName table,
+        IReadOnlyList<string> whereColumns,
+        IReadOnlyList<object?[]> keys,
+        IDbWriteTransaction? transaction = null,
+        CancellationToken ct = default
+    );
+
     /// <summary>Пакетное обновление одного столбца по ключу (используется для самоссылающихся внешних ключей).</summary>
     Task<int> ExecuteUpdatesAsync(
         DbTable table,
